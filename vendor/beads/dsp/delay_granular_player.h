@@ -33,10 +33,12 @@
 
 #include "beads/dsp/delay_grain.h"
 #include "beads/dsp/granular_player.h"
+#include "beets_config.h"  // Beets: for BEETS_NUM_GRAINS
 
 namespace beads {
 
-class DelayGranularPlayer : public GranularPlayer<DelayGrain, 32> {
+// Beets: grain count 32 -> BEETS_NUM_GRAINS (beets_config.h), sized to the NTS-1 CPU budget.
+class DelayGranularPlayer : public GranularPlayer<DelayGrain, BEETS_NUM_GRAINS> {
  public:
   DelayGranularPlayer() { }
   ~DelayGranularPlayer() { }

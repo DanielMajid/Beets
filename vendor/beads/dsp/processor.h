@@ -33,8 +33,10 @@
 
 #include "beads/dsp/granular_processor.h"
 #include "beads/dsp/modulated_parameter.h"
-#include "beads/dsp/fx/reverb.h"
+// Beets: fx/reverb.h removed (reverb stage deleted; the NTS-1 revfx slot follows).
 #include "beads/dsp/fx/wow_and_flutter.h"
+
+#include "beets_config.h"  // Beets: BEETS_MEDIA_* switches
 
 // Setting this flag slows down the codec to 24kHz for the MEDIA_DIRTY_TAPE
 // setting. The codec becomes very hissy at this sample rate, but this has
@@ -43,7 +45,8 @@
 // When this flag is not set, the codec is run at 48kHz and the wet signal is
 // downsampled by a 0.5 factor before being processed. Low-pass filtering
 // is also applied to the output signal within the wow and flutter code.
-#define ENABLE_HARDWARE_24K
+// Beets: ENABLE_HARDWARE_24K left undefined - the NTS-1 codec rate is fixed at 48 kHz.
+// #define ENABLE_HARDWARE_24K
 
 namespace beads {
 
@@ -62,17 +65,22 @@ class Processor {
     MEDIA_DIGITAL
   };
   
+  // Beets: reverb_amount (reverb deleted) and output_gate (no gate output) removed.
   struct MixParameters {
     float feedback;
     float dry_wet;
-    float reverb_amount;
-    bool output_gate;
   };
   
-  void Init(uint8_t* buffers[], uint16_t* reverb_buffer);
+  // Beets: reverb_buffer argument removed.
+  void Init(uint8_t* buffers[]);
   void Configure(Media media, bool mono);
   
   inline Media media() const { return media_; }
+#ifdef BEETS_PROFILE  // Beets: read-only accessor for the profiler (digital media).
+  inline int num_active_grains() const {
+    return processor_digital_.num_active_grains();
+  }
+#endif
   inline bool mono() const { return mono_; }
   
   inline float sample_rate() const {
@@ -96,17 +104,24 @@ class Processor {
   inline uint8_t* delay_buffer_raw_bytes(size_t offset) {
     // Independently of the quality settings, we're writing in the same
     // bytes anyway!
-    return processor_vintage_digital_.delay_buffer_raw_bytes(mono_, offset);
+    // Beets: digital instance (always compiled in) instead of vintage digital.
+    return processor_digital_.delay_buffer_raw_bytes(mono_, offset);
   }
   
   inline int* mutable_delay_write_ptr() {
     switch (media_) {
+#ifdef BEETS_MEDIA_DIRTY_TAPE  // Beets: media compiled in only on demand.
       case MEDIA_DIRTY_TAPE:
         return processor_dirty_tape_.mutable_delay_write_ptr(mono_);
+#endif
+#ifdef BEETS_MEDIA_CLEAN_TAPE  // Beets: media compiled in only on demand.
       case MEDIA_CLEAN_TAPE:
         return processor_clean_tape_.mutable_delay_write_ptr(mono_);
+#endif
+#ifdef BEETS_MEDIA_VINTAGE_DIGITAL  // Beets: media compiled in only on demand.
       case MEDIA_VINTAGE_DIGITAL:
         return processor_vintage_digital_.mutable_delay_write_ptr(mono_);
+#endif
       case MEDIA_DIGITAL:
       default:
         return processor_digital_.mutable_delay_write_ptr(mono_);
@@ -121,12 +136,18 @@ class Processor {
   
   inline int remaining() const {
     switch (media_) {
+#ifdef BEETS_MEDIA_DIRTY_TAPE  // Beets: media compiled in only on demand.
       case MEDIA_DIRTY_TAPE:
         return processor_dirty_tape_.remaining(mono_);
+#endif
+#ifdef BEETS_MEDIA_CLEAN_TAPE  // Beets: media compiled in only on demand.
       case MEDIA_CLEAN_TAPE:
         return processor_clean_tape_.remaining(mono_);
+#endif
+#ifdef BEETS_MEDIA_VINTAGE_DIGITAL  // Beets: media compiled in only on demand.
       case MEDIA_VINTAGE_DIGITAL:
         return processor_vintage_digital_.remaining(mono_);
+#endif
       case MEDIA_DIGITAL:
       default:
         return processor_digital_.remaining(mono_);
@@ -135,22 +156,36 @@ class Processor {
 
   inline void Trim() {
     switch (media_) {
+#ifdef BEETS_MEDIA_DIRTY_TAPE  // Beets: media compiled in only on demand.
       case MEDIA_DIRTY_TAPE:
         processor_dirty_tape_.Trim(mono_);
+#endif
+#ifdef BEETS_MEDIA_CLEAN_TAPE  // Beets: media compiled in only on demand.
       case MEDIA_CLEAN_TAPE:
         processor_clean_tape_.Trim(mono_);
+#endif
+#ifdef BEETS_MEDIA_VINTAGE_DIGITAL  // Beets: media compiled in only on demand.
       case MEDIA_VINTAGE_DIGITAL:
         processor_vintage_digital_.Trim(mono_);
+#endif
       case MEDIA_DIGITAL:
       default:
         processor_digital_.Trim(mono_);
     }
   }
   
+#ifdef BEETS_STRESS_TEST
+  // Beets: stress-test builds only. Uses vintage digital when compiled in
+  // (upstream choice), else the digital instance.
   void WasteCPUCycles(size_t size) {
     // The one with the most convoluted memory access!
+#ifdef BEETS_MEDIA_VINTAGE_DIGITAL
     processor_vintage_digital_.WasteCPUCycles(size);
+#else
+    processor_digital_.WasteCPUCycles(size);
+#endif
   }
+#endif  // BEETS_STRESS_TEST
 
   void Process(
       SeedButtonState seed_button_state,
@@ -168,14 +203,21 @@ class Processor {
       RESOLUTION_16_BIT,
       kDelayBufferSizeBits / (16 * 2),
       1> processor_digital_;
+  // Beets: only the digital (16-bit, ratio 1) instance is always compiled;
+  // every other media costs a full template instance of code size.
+#ifdef BEETS_MEDIA_VINTAGE_DIGITAL
   GranularProcessor<
       RESOLUTION_12_BIT,
       kDelayBufferSizeBits / (12 * 2),
       1> processor_vintage_digital_;
+#endif
+#ifdef BEETS_MEDIA_CLEAN_TAPE
   GranularProcessor<
       RESOLUTION_12_BIT,
       kDelayBufferSizeBits / (12 * 2),
       2> processor_clean_tape_;
+#endif
+#ifdef BEETS_MEDIA_DIRTY_TAPE
 #ifdef ENABLE_HARDWARE_24K
   GranularProcessor<
       RESOLUTION_8_BIT,
@@ -187,6 +229,7 @@ class Processor {
       kDelayBufferSizeBits / (8 * 2),
       2> processor_dirty_tape_;
 #endif  // ENABLE_HARDWARE_24K
+#endif  // BEETS_MEDIA_DIRTY_TAPE
 
   TriggerGenerator trigger_generator_;
   DelayController delay_controller_;
@@ -200,9 +243,10 @@ class Processor {
   float dry_;
   float wet_;
   
+#ifdef BEETS_MEDIA_DIRTY_TAPE  // Beets: wow and flutter is only used by dirty tape.
   WowAndFlutter wow_and_flutter_;
-  Reverb reverb_;
-  Limiter pre_reverb_limiter_;
+#endif
+  // Beets: reverb_ and pre_reverb_limiter_ removed with the reverb stage.
   Limiter output_limiter_;
   
   DISALLOW_COPY_AND_ASSIGN(Processor);

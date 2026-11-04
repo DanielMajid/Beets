@@ -44,6 +44,7 @@
 #define BEETS_DWT_CYCCNT (*(volatile uint32_t*)0xE0001004u)
 #define BEETS_DWT_LAR    (*(volatile uint32_t*)0xE0001FB0u)
 #define BEETS_DEMCR      (*(volatile uint32_t*)0xE000EDFCu)
+#define BEETS_SCB_CCR    (*(volatile uint32_t*)0xE000ED14u)
 #define BEETS_DEMCR_TRCENA     (1u << 24)
 #define BEETS_DWT_CYCCNTENA    (1u << 0)
 static inline uint32_t BeetsCycles() { return BEETS_DWT_CYCCNT; }
@@ -82,6 +83,7 @@ enum DiagIndex {
   DIAG_GRAINS_PEAK,          // peak number of active grains
   DIAG_NOTE_ON_COUNT,        // unit_note_on calls received
   DIAG_PITCH_BEND_COUNT,     // unit_pitch_bend calls received
+  DIAG_CCR_TRAPS,            // SCB->CCR: 10 x DIV_0_TRP + UNALIGN_TRP (0, 1, 10, 11)
   DIAG_RESET_PEAKS,          // selecting this value resets all peaks / min / max
   DIAG_LAST
 };
@@ -300,6 +302,14 @@ class Profiler {
       case DIAG_GRAINS_PEAK: return FormatNumber(float(grains_peak_));
       case DIAG_NOTE_ON_COUNT: return FormatNumber(float(note_on_count_ % 10000));
       case DIAG_PITCH_BEND_COUNT: return FormatNumber(float(pitch_bend_count_ % 10000));
+      case DIAG_CCR_TRAPS: {
+#ifndef TEST
+        const uint32_t ccr = BEETS_SCB_CCR;
+#else
+        const uint32_t ccr = 0;
+#endif
+        return FormatNumber(float(((ccr >> 4) & 1) * 10 + ((ccr >> 3) & 1)));
+      }
       case DIAG_RESET_PEAKS: return "RST";
       default: return "";
     }

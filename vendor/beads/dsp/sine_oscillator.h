@@ -33,7 +33,7 @@
 
 #include "stmlib/dsp/dsp.h"
 
-#include "beads/resources.h"
+#include "fx_api.h"  // Beets: fx_sinf() replaces lut_sine (5 KB table; SDK table is in firmware).
 
 namespace beads {
 
@@ -62,7 +62,8 @@ class SineOscillator {
     if (phase_ >= 1.0f) {
       phase_ -= 1.0f;
     }
-    return 0.5f + 0.5f * stmlib::Interpolate(lut_sine, phase_, 1024.0f);
+    // Beets: was stmlib::Interpolate(lut_sine, phase_, 1024.0f) == sin(2 pi phase_).
+    return 0.5f + 0.5f * fx_sinf(phase_);
   }
   
   inline float Render(float frequency) {

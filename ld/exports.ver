@@ -1,0 +1,10 @@
+/* Beets: export only what the logue runtime resolves (the unit_* callbacks
+   and unit_header). Everything else becomes local, so the ~110 C++ template
+   symbols leave .dynsym/.dynstr/.hash and internal calls bypass the PLT.
+   Undefined firmware symbols (e.g. wt_sine_lut_f) are still imported. */
+{
+  global:
+    unit_*;
+  local:
+    *;
+};

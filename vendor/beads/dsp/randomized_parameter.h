@@ -34,7 +34,7 @@
 #include "stmlib/dsp/units.h"
 #include "stmlib/utils/random.h"
 
-#include "beads/resources.h"
+// Beets: beads/resources.h include removed (no lookup table used here; resources.* deleted).
 
 namespace beads {
 
@@ -87,18 +87,14 @@ class RandomWalkModulation {
   DISALLOW_COPY_AND_ASSIGN(RandomWalkModulation);
 };
 
+// Beets: cv / has_cv removed (no CV inputs). has_cv was always false, so only
+// the attenuverter (internal randomisation) branches remain, unchanged.
 struct RandomizedParameter {
   float base;
   float attenuverter;
-  float cv;
-  bool has_cv;
   
   inline float randomness_amount() const {
-    if (has_cv) {
-      return std::max(-attenuverter, 0.0f);
-    } else {
-      return fabsf(attenuverter);
-    }
+    return fabsf(attenuverter);
   }
   
   inline float value(
@@ -108,30 +104,22 @@ struct RandomizedParameter {
       bool clamp) const {
     float result = base;
 
-    if (!has_cv) {
-      // The attenuverter controls the type of internal modulation.
-      if (modulation) {
-        result += attenuverter * range * modulation->value(
-            attenuverter, step_size);
-      } else {
-        const float blend = attenuverter > 0.0f
-            ? attenuverter
-            : std::min(1.0f,
-              attenuverter * stmlib::Random::GetFloat() * -3.0f);
-        
-        const float random_value = !clamp
-            ? CenteredUniform() * range
-            : stmlib::Random::GetFloat() * range - result;
-        result += random_value * blend;
-      }
+    // Beets: the has_cv == true branch was removed; this is the former
+    // !has_cv branch, verbatim.
+    // The attenuverter controls the type of internal modulation.
+    if (modulation) {
+      result += attenuverter * range * modulation->value(
+          attenuverter, step_size);
     } else {
-      if (attenuverter < 0.0f) {
-        const float extra_modulation = (modulation ? modulation->value(
-              1.0f, step_size) : PseudoGaussian());
-        result += std::max(cv, 0.0f) * -attenuverter * extra_modulation;
-      } else {
-        result += attenuverter * cv;
-      }
+      const float blend = attenuverter > 0.0f
+          ? attenuverter
+          : std::min(1.0f,
+            attenuverter * stmlib::Random::GetFloat() * -3.0f);
+      
+      const float random_value = !clamp
+          ? CenteredUniform() * range
+          : stmlib::Random::GetFloat() * range - result;
+      result += random_value * blend;
     }
     
     if (clamp) {

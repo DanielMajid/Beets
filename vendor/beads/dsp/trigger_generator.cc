@@ -34,6 +34,8 @@
 #include "stmlib/dsp/units.h"
 #include "stmlib/utils/random.h"
 
+#include "beets_config.h"  // Beets: BEETS_MAX_BLOCK_SIZE
+
 namespace beads {
 
 using namespace std;
@@ -250,7 +252,8 @@ void TriggerGenerator::Render(
     CONSTRAIN(density, 0.0f, 1.0f);
 
     const float fm = SemitonesToRatio(exponential_fm * 60.0f);
-    stmlib::GateFlags merged_gate_flags[size];
+    // Beets: was a VLA merged_gate_flags[size]; static buffer of the max block size.
+    static stmlib::GateFlags merged_gate_flags[BEETS_MAX_BLOCK_SIZE];
     
     // Merge seed button and external gate input to get a single gate stream.
     for (size_t i = 0; i < size; ++i) {

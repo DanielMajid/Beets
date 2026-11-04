@@ -34,8 +34,12 @@
 
 namespace stmlib {
 
-extern const float lut_pitch_ratio_high[257];
-extern const float lut_pitch_ratio_low[257];
+// Beets: the two 257-entry tables (2 KB of the 24 KB unit) are rebuilt
+// bit-exactly at init into caller-provided memory (SDRAM); see units.cc.
+extern const float* lut_pitch_ratio_high;
+extern const float* lut_pitch_ratio_low;
+const size_t kPitchRatioTablesSize = 2 * 257;  // floats
+void InitPitchRatioTables(float* storage);
 
 inline float SemitonesToRatio(float semitones) {
   float pitch = semitones + 128.0f;

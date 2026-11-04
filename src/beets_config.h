@@ -24,12 +24,13 @@
 
 /* The single compile-time grain count. Beads uses 32 on its own MCU with
    on-chip SRAM. Override from the command line:
-     ./build.sh UDEFS=-DBEETS_NUM_GRAINS=8
+    ./build.sh BEETS_DEFS=-DBEETS_NUM_GRAINS=8
    The scheduler (granular_player.h, SortGrainList) touches 4 "safety"
    grains, so 4 is the hard minimum. */
 #ifndef BEETS_NUM_GRAINS
 #define BEETS_NUM_GRAINS 4
 #endif
+
 
 /* Beads runs its DSP in blocks of sample_rate / kBlockRate frames
    (beads.cc: kBlockRate = 4000 -> 12 frames at 48 kHz). Parameters,
@@ -38,6 +39,13 @@
    keep the control rate identical to the module. It also bounds every
    scratch buffer that replaces a Beads VLA. */
 #define BEETS_BLOCK_SIZE 12
+
+/* Upper bound on the size argument of every Beads Process()/Render() call;
+   sizes the static buffers that replace the VLAs in processor.cc,
+   granular_processor.h and trigger_generator.cc. Beads itself allows 24
+   (kMaxCodecBlockSize) but this port never passes more than one block, and
+   every frame of headroom costs 116 bytes of the 24 KB RAM budget. */
+#define BEETS_MAX_BLOCK_SIZE BEETS_BLOCK_SIZE
 
 /* Bytes of delay memory zeroed per render call after unit_reset().
    768 KB / 16 KB = 48 render calls. */
@@ -48,9 +56,42 @@
    0 DIRTY_TAPE, 1 CLEAN_TAPE, 2 VINTAGE_DIGITAL, 3 DIGITAL.
    Only DIGITAL is compiled in; the range is trimmed so the values keep
    their meaning if more media are added later. */
+#ifndef BEETS_ENABLE_MONO
+#ifdef BEETS_PROFILE
+/* MODE is replaced by DIAG in profiling builds, so DIGM is unreachable there;
+   dropping its code keeps the instrumented build inside 24 KB. Stereo is
+   the heavier path, i.e. the one worth measuring. */
+#define BEETS_ENABLE_MONO 0
+#else
+#define BEETS_ENABLE_MONO 1
+#endif
+#endif
+#define BEETS_MONO_ENABLED BEETS_ENABLE_MONO
 #define BEETS_MODE_MIN  6
-#define BEETS_MODE_MAX  7
+#if BEETS_ENABLE_MONO
+#define BEETS_MODE_MAX  7   /* DIGS, DIGM */
+#else
+#define BEETS_MODE_MAX  6   /* DIGS only: mono path compiled out */
+#endif
 #define BEETS_MODE_INIT 6
+
+/* Optional media, each a full GranularProcessor template instance:
+   define BEETS_MEDIA_VINTAGE_DIGITAL, BEETS_MEDIA_CLEAN_TAPE or
+   BEETS_MEDIA_DIRTY_TAPE to compile one in (not wired to MODE yet).
+   BEETS_STRESS_TEST: calls Processor::WasteCPUCycles() from every block
+   (upstream's dummy granular player) as the worst-case load. */
+
+/* ---- SEED (note-on) and clock --------------------------------------------- */
+/* Beads ui.cc: holding SEED for 4000 ms re-locks it (free-running grains). */
+#define BEETS_SEED_LONG_PRESS_MS 4000
+/* A 4PPQN tick becomes a gate pulse this long on the SEED input (1 ms). */
+#define BEETS_CLOCK_PULSE_SAMPLES 48
+/* The clock counts as "patched" while ticks keep arriving; after this many
+   samples without one it is "unpatched" again (4 s, Beads'
+   kDividerResetInterval). */
+#define BEETS_CLOCK_TIMEOUT_SAMPLES (4 * 48000)
+/* Pitch bend range, semitones each way, added to PTCH. */
+#define BEETS_PITCH_BEND_RANGE 2.0f
 
 /* ---- Parameter indices -------------------------------------------------- */
 enum {
@@ -69,6 +110,6 @@ enum {
 };
 
 /* ---- Diagnostics (BEETS_PROFILE builds) --------------------------------- */
-#define BEETS_DIAG_COUNT 28 /* == DIAG_LAST in profiler.h (static_assert there) */
+#define BEETS_DIAG_COUNT 29 /* == DIAG_LAST in profiler.h (static_assert there) */
 
 #endif /* BEETS_CONFIG_H_ */

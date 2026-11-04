@@ -30,7 +30,9 @@
 
 #include <algorithm>
 
+#ifdef BEETS_MEDIA_DIRTY_TAPE  // Beets: mu-law only needed by dirty tape.
 #include "beads/dsp/mu_law.h"
+#endif
 
 namespace beads {
 
@@ -40,18 +42,23 @@ const float kDelayModeFadeTime = 0.75f;  // seconds
 using namespace std;
 using namespace stmlib;
 
-void Processor::Init(
-    uint8_t* buffers[],
-    uint16_t* reverb_buffer) {
+// Beets: reverb_buffer argument and reverb_.Init removed; media guarded.
+void Processor::Init(uint8_t* buffers[]) {
   processor_digital_.Init(48000.0f, buffers);
+#ifdef BEETS_MEDIA_VINTAGE_DIGITAL
   processor_vintage_digital_.Init(32000.0f, buffers);
+#endif
+#ifdef BEETS_MEDIA_CLEAN_TAPE
   processor_clean_tape_.Init(24000.0f, buffers);
+#endif
+#ifdef BEETS_MEDIA_DIRTY_TAPE
   processor_dirty_tape_.Init(24000.0f, buffers);
+#endif
   
   dry_ = 0.0f;
   wet_ = 0.0f;
   
-  reverb_.Init(reverb_buffer, 48000.0f);
+#ifdef BEETS_MEDIA_DIRTY_TAPE
 #ifdef ENABLE_HARDWARE_24K
   wow_and_flutter_.Init(24000.0f);
   wow_and_flutter_.set_lp(0.95f);
@@ -59,6 +66,7 @@ void Processor::Init(
   wow_and_flutter_.Init(48000.0f);
   wow_and_flutter_.set_lp(0.6f);
 #endif  // ENABLE_HARDWARE_24K
+#endif  // BEETS_MEDIA_DIRTY_TAPE
 
   Configure(MEDIA_DIGITAL, false);
   
@@ -77,26 +85,34 @@ void Processor::Configure(Media media, bool mono) {
       processor_digital_.Reset();
       max_delay = processor_digital_.max_delay_times_ratio();
       break;
+#ifdef BEETS_MEDIA_VINTAGE_DIGITAL  // Beets: media compiled in only on demand.
     case MEDIA_VINTAGE_DIGITAL:
       processor_vintage_digital_.Reset();
       max_delay = processor_vintage_digital_.max_delay_times_ratio();
       break;
+#endif
+#ifdef BEETS_MEDIA_CLEAN_TAPE
     case MEDIA_CLEAN_TAPE:
       processor_clean_tape_.Reset();
       max_delay = processor_clean_tape_.max_delay_times_ratio();
       break;
+#endif
+#ifdef BEETS_MEDIA_DIRTY_TAPE
     case MEDIA_DIRTY_TAPE:
       processor_dirty_tape_.Reset();
       max_delay = processor_dirty_tape_.max_delay_times_ratio();
       break;
+#endif
+    default:  // Beets: media not compiled in.
+      break;
   }
   
   float sr = sample_rate();
-  pre_reverb_limiter_.Init(1.0f / (sr * 4.0f), 0.9f);
+  // Beets: pre_reverb_limiter_.Init removed with the reverb stage.
   output_limiter_.Init(1.0f / (sr * 6.0f), 0.9f);
   trigger_generator_.Init(sr);
   delay_controller_.Init(sr, max_delay * (mono ? 2 : 1));
-  reverb_.Reset(sr);
+  // Beets: reverb_.Reset removed.
 }
 
 void Processor::Process(
@@ -118,12 +134,12 @@ void Processor::Process(
             -kDelayModeTransitionTime,
             +kDelayModeTransitionTime);
   
-  float expo_fm_amount = 20.0f * (fabsf(density.base - 0.5f) - 0.225f);
-  CONSTRAIN(expo_fm_amount, 0.0f, 1.0f);
-
-  TriggerGenerator::Output triggers_buffer[size];
-  DelayController::Output taps_buffer[size];
-  bool gate_out[size];
+  // Beets: expo_fm_amount removed - it only split density.cv (always 0 here)
+  // between the linear and exponential FM inputs; both are passed as 0.0f.
+  // Beets: triggers_buffer / taps_buffer were VLAs; gate_out (gate output
+  // jack) removed.
+  static TriggerGenerator::Output triggers_buffer[BEETS_MAX_BLOCK_SIZE];
+  static DelayController::Output taps_buffer[BEETS_MAX_BLOCK_SIZE];
 
   TriggerGenerator::Output* triggers = &triggers_buffer[0];
   DelayController::Output* taps = &taps_buffer[0];
@@ -136,31 +152,25 @@ void Processor::Process(
         seed_input,
         freeze,
         density.base,
-        (1.0f - expo_fm_amount) * density.cv,
-        expo_fm_amount * density.cv,
+        0.0f,  // Beets: was (1.0f - expo_fm_amount) * density.cv
+        0.0f,  // Beets: was expo_fm_amount * density.cv
         parameters.time,
         parameters.shape,
         taps,
         size);
-    for (size_t i = 0; i < size; ++i) {
-      gate_out[i] = taps[i].gate;
-    }
   } else {
     taps = NULL;
     trigger_generator_.Render(
         seed_button_state,
         seed_input,
         density.base,
-        (1.0f - expo_fm_amount) * density.cv,
-        expo_fm_amount * density.cv,
+        0.0f,  // Beets: was (1.0f - expo_fm_amount) * density.cv
+        0.0f,  // Beets: was expo_fm_amount * density.cv
         triggers,
         size);
-    for (size_t i = 0; i < size; ++i) {
-      gate_out[i] = triggers[i].gate;
-    }
   }
   
-  FloatFrame dry_signal[size];
+  static FloatFrame dry_signal[BEETS_MAX_BLOCK_SIZE];  // Beets: was a VLA.
   
   // Granular processing.
   const float feedback = mix_parameters.feedback;
@@ -171,6 +181,7 @@ void Processor::Process(
       copy(&in[0], &in[size], &dry_signal[0]);
       break;
     
+#ifdef BEETS_MEDIA_VINTAGE_DIGITAL  // Beets: media compiled in only on demand.
     case MEDIA_VINTAGE_DIGITAL:
       processor_vintage_digital_.Process(
           triggers, taps, freeze, parameters, feedback, mono_, in, out, size);
@@ -179,14 +190,18 @@ void Processor::Process(
         dry_signal[i].r = static_cast<int32_t>(in[i].r * 4096.0f) / 4096.0f;
       }
       break;
+#endif
     
+#ifdef BEETS_MEDIA_CLEAN_TAPE
     case MEDIA_CLEAN_TAPE:
       processor_clean_tape_.Process(
           triggers, taps, freeze, parameters, feedback, mono_, in, out,
           size);
       copy(&in[0], &in[size], &dry_signal[0]);
       break;
+#endif
     
+#ifdef BEETS_MEDIA_DIRTY_TAPE
     case MEDIA_DIRTY_TAPE:
       processor_dirty_tape_.Process(
           triggers, taps, freeze, parameters, feedback, mono_, in, out,
@@ -199,6 +214,9 @@ void Processor::Process(
             Lin2MuLaw(
                 stmlib::Clip16(static_cast<int32_t>(in[i].r * 32768.0f))));
       }
+      break;
+#endif
+    default:  // Beets: media not compiled in.
       break;
   }
   
@@ -223,34 +241,19 @@ void Processor::Process(
   }
   
   // Wow and flutter simulation.
+#ifdef BEETS_MEDIA_DIRTY_TAPE  // Beets: only exists when dirty tape is compiled in.
   if (media_ == MEDIA_DIRTY_TAPE) {
     wow_and_flutter_.Process(out, size);
   }
+#endif
   
-  pre_reverb_limiter_.Process(out, size);
-  
-  // Reverb.
-  const bool caveman = media_ != MEDIA_DIGITAL;
-  const float reverb = mix_parameters.reverb_amount;
-  const float reverb_mix = reverb * reverb * 0.9f;
-  const float reverb_time = reverb * reverb * reverb;
-  reverb_.set_mix(reverb_mix);
-  reverb_.set_time(caveman
-      ? (0.45f + 0.5f * reverb_time)
-      : (0.3f + 0.6f * reverb_time));
-  reverb_.set_lp(
-      caveman ? 0.4f : (media_ == MEDIA_VINTAGE_DIGITAL ? 0.75f : 0.6f));
-  reverb_.Process(out, size);
+  // Beets: pre-reverb limiter and the reverb block (caveman / reverb_mix /
+  // reverb_time / reverb_lp) removed. A user revfx can follow this unit.
   
   // Final clipping/limiting
   output_limiter_.Process(out, size);
   
-  if (mix_parameters.output_gate) {
-    for (size_t i = 0; i < size; ++i) {
-      out[i].l = (out[i].l + out[i].r) * 0.5f;
-      out[i].r = gate_out[i] ? -0.8f : 0.0f;
-    }
-  }
+  // Beets: output_gate block removed (no gate output on the NTS-1).
 }
 
 }  // namespace beads

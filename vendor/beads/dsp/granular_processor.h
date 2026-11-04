@@ -39,6 +39,8 @@
 #include "beads/dsp/multitap_delay.h"
 #include "beads/dsp/sample_rate_conversion_filters.h"
 
+#include "beets_config.h"  // Beets: BEETS_MAX_BLOCK_SIZE, BEETS_STRESS_TEST
+
 namespace beads {
 
 template<Resolution resolution, int max_delay, int ratio>
@@ -53,7 +55,9 @@ class GranularProcessor {
     mono_delay_line_.Init(buffers);
     stereo_delay_line_.Init(buffers);
 
+#ifdef BEETS_STRESS_TEST  // Beets: dummy player only exists in stress-test builds.
     dummy_granular_player_.Init(sample_rate);
+#endif
     granular_player_.Init(sample_rate);
     multitap_delay_.Init(sample_rate);
     
@@ -77,12 +81,20 @@ class GranularProcessor {
   }
   
   inline void Reset() {
-    mono_delay_line_.Reset();
-    stereo_delay_line_.Reset();
+    // Beets: Reset(false) - clearing 768 KB at once stalls the audio thread;
+    // the caller (BeetsProcessor) clears the memory incrementally instead.
+    mono_delay_line_.Reset(false);
+    stereo_delay_line_.Reset(false);
     granular_player_.Reset();
     multitap_delay_.Reset();
   }
   
+#ifdef BEETS_PROFILE  // Beets: read-only accessor for the profiler.
+  inline int num_active_grains() const {
+    return granular_player_.CountActiveGrains();
+  }
+#endif
+
   inline int max_delay_times_ratio() const {
     return max_delay * ratio;
   }
@@ -113,24 +125,22 @@ class GranularProcessor {
     return mono_delay_line_.raw_bytes(offset);
   }
   
+#ifdef BEETS_STRESS_TEST
+  // Beets: has_cv assignments removed (field deleted); stress-test builds only.
   inline void WasteCPUCycles(size_t size) {
     Parameters p;
   
     p.time.base = 0.0f;
     p.time.attenuverter = 1.0f;
-    p.time.has_cv = false;
 
     p.size.base = 0.0f;
     p.size.attenuverter = 1.0f;
-    p.size.has_cv = false;
 
     p.shape.base = 0.0f;
     p.shape.attenuverter = 1.0f;
-    p.shape.has_cv = false;
 
     p.pitch.base = 0.0f;
     p.pitch.attenuverter = 1.0f;
-    p.pitch.has_cv = false;
     
     p.monophonic_mode = false;
 
@@ -146,6 +156,7 @@ class GranularProcessor {
       dummy_granular_player_.Render(&stereo_delay_line_, trigger, p, &out);
     }
   }
+#endif  // BEETS_STRESS_TEST
   
   inline void Process(
       const TriggerGenerator::Output* triggers,
@@ -163,13 +174,15 @@ class GranularProcessor {
     } else {
       size_t d_size = size / size_t(ratio);
 
-      bool d_freeze[d_size];
-      TriggerGenerator::Output d_triggers[d_size];
-      DelayController::Output d_taps[d_size];
-      FloatFrame d_in[d_size];
-      FloatFrame d_out[d_size];
-      float downsampled[d_size];
-      float upsampled[size];
+      // Beets: these 7 were VLAs sized by size / d_size; now static buffers of
+      // the max block size (one set per template instance, never on the stack).
+      static bool d_freeze[BEETS_MAX_BLOCK_SIZE];
+      static TriggerGenerator::Output d_triggers[BEETS_MAX_BLOCK_SIZE];
+      static DelayController::Output d_taps[BEETS_MAX_BLOCK_SIZE];
+      static FloatFrame d_in[BEETS_MAX_BLOCK_SIZE];
+      static FloatFrame d_out[BEETS_MAX_BLOCK_SIZE];
+      static float downsampled[BEETS_MAX_BLOCK_SIZE];
+      static float upsampled[BEETS_MAX_BLOCK_SIZE];
 
       DownsampleGate(freeze, d_freeze, size);
       
@@ -274,8 +287,8 @@ class GranularProcessor {
     const float speed = stmlib::SemitonesToRatio(
         parameters.pitch.value(&pitch_modulation_, size, 24.0f, false));
 
-    float bandwidth = 0.5f * (1.0f + parameters.size.attenuverter) + \
-        (parameters.size.has_cv ? parameters.size.cv : 0.0f);
+    // Beets: "+ (has_cv ? size.cv : 0.0f)" removed; has_cv is always false.
+    float bandwidth = 0.5f * (1.0f + parameters.size.attenuverter);
     CONSTRAIN(bandwidth, 0.0f, 1.0f)
 
     stmlib::ParameterInterpolator bandwidth_modulation(
@@ -314,7 +327,8 @@ class GranularProcessor {
 
       out->l = 0.0f;
       out->r = 0.0f;
-      if (mono) {
+      // Beets: BEETS_MONO_ENABLED == 0 folds the mono branch away (~2 KB of code).
+      if (BEETS_MONO_ENABLED && mono) {
         mono_delay_line_.Write(s, *freeze);
         if (triggers) {
           granular_player_.Render(
@@ -374,7 +388,9 @@ class GranularProcessor {
     }
   }
       
+#ifdef BEETS_STRESS_TEST  // Beets: see WasteCPUCycles.
   DelayGranularPlayer dummy_granular_player_;
+#endif
   DelayGranularPlayer granular_player_;
   MultitapDelay multitap_delay_;
   

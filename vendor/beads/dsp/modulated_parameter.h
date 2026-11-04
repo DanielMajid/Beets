@@ -33,12 +33,12 @@
 
 namespace beads {
 
+// Beets: cv removed (no CV inputs; it was base + 0).
 struct ModulatedParameter {
   float base;
-  float cv;
 
   inline float value() const {
-    float result = base + cv;
+    float result = base;
     CONSTRAIN(result, 0.0f, 1.0f);
     return result;
   }

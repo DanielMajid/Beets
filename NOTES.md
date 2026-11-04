@@ -36,11 +36,11 @@ The `size` "text" column includes ELF headers, `.dynsym`/`.dynstr`, `.rel.*`,
 - Hardware: **PENDING** — audible delay and successful allocation on the
   device have not been observed yet (no hardware in the build environment).
 | 2 | phase 1 + profiler compiled out (shipping config) | 5288 | 196 | 148 | 5632 |
-| 2 | phase 1 + profiler (`UDEFS=-DBEETS_PROFILE`) | 7931 | 216 | 320 | 8467 |
+| 2 | phase 1 + profiler (`BEETS_DEFS=-DBEETS_PROFILE`) | 7931 | 216 | 320 | 8467 |
 
 ### Phase 2 — instrumentation
 
-`src/profiler.h`, enabled with `./build.sh UDEFS=-DBEETS_PROFILE`. In that
+`src/profiler.h`, enabled with `./build.sh BEETS_DEFS=-DBEETS_PROFILE`. In that
 build parameter slot 9 is **DIAG** (instead of MODE; MODE stays at its default,
 DIGS, i.e. the heavier stereo path). Turn the encoder to a DIAG value to read
 the figure; re-select it to refresh. Host test: `host/test_profiler.cc`

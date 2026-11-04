@@ -19,6 +19,17 @@ struct HostSineLut {
   HostSineLut() { for (unsigned i = 0; i <= k_wt_sine_size; ++i) v[i] = (float)sin(M_PI * i / k_wt_sine_size); }
 };
 static HostSineLut host_sine_lut;
+#ifdef HOST_FX_SINF_UPSTREAM_LUT
+// Test-only: reproduce upstream SineOscillator exactly (lut_sine, 1024/cycle)
+// to show fx_sinf is the only source of difference.
+namespace beads { extern const float lut_sine[]; }
+static inline float fx_sinf(float x) {
+  const float index = x * 1024.0f;
+  const int i = int(index);
+  const float f = index - float(i);
+  return beads::lut_sine[i] + (beads::lut_sine[i + 1] - beads::lut_sine[i]) * f;
+}
+#else
 static inline float fx_sinf(float x) {  // Copied algorithm from fx_api.h
   const float p = x - (uint32_t)x;
   const float x0f = 2.f * p * k_wt_sine_size;
@@ -28,3 +39,4 @@ static inline float fx_sinf(float x) {  // Copied algorithm from fx_api.h
   const float y0 = linintf(x0f - x0p, host_sine_lut.v[x0], host_sine_lut.v[x1]);
   return (x0p < k_wt_sine_size) ? y0 : -y0;
 }
+#endif  // HOST_FX_SINF_UPSTREAM_LUT
