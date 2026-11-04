@@ -1,0 +1,6 @@
+build/
+.dep/
+sim/
+host/out/
+*.nts1mkiiunit
+!release/*.nts1mkiiunit
