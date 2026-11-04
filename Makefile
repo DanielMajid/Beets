@@ -1,4 +1,6 @@
 ##############################################################################
+# Original: Copyright (c) 2018-2023, KORG INC., BSD 3-Clause License
+# (full text in THIRD_PARTY_LICENSES).
 # Beets: derived from logue-sdk platform/nts-1_mkii/dummy-delfx/Makefile.
 # Only the path defaults below are changed so the project builds either
 # in-tree (cloned/symlinked as platform/nts-1_mkii/<project>, which is what

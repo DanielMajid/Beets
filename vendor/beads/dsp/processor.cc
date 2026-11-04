@@ -158,6 +158,7 @@ void Processor::Process(
         parameters.shape,
         taps,
         size);
+    // Beets: gate_out[i] = taps[i].gate copy removed (no gate output).
   } else {
     taps = NULL;
     trigger_generator_.Render(
@@ -168,6 +169,7 @@ void Processor::Process(
         0.0f,  // Beets: was expo_fm_amount * density.cv
         triggers,
         size);
+    // Beets: gate_out[i] = triggers[i].gate copy removed (no gate output).
   }
   
   static FloatFrame dry_signal[BEETS_MAX_BLOCK_SIZE];  // Beets: was a VLA.

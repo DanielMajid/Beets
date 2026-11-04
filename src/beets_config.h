@@ -16,9 +16,31 @@
 /* Developer ID: 'DMaj' as a little-endian FourCC. Not registered in
    logue-sdk/developer_ids.md yet; change before public release if it clashes. */
 #define BEETS_DEV_ID    0x6A614D44U
-#define BEETS_UNIT_ID   0x00000001U
 #define BEETS_VERSION   0x00000100U /* 0.1.0 */
+
+/* Measurement builds (scripts/release.sh) get their own unit ID and name so
+   they can sit in other slots next to the shipping unit. */
+#ifndef BEETS_VARIANT
+#define BEETS_VARIANT 0
+#endif
+#define BEETS_UNIT_ID (0x00000001U + BEETS_VARIANT)
+#if BEETS_VARIANT == 0
 #define BEETS_UNIT_NAME "Beets"
+#elif BEETS_VARIANT == 1
+#define BEETS_UNIT_NAME "Beets P4"
+#elif BEETS_VARIANT == 2
+#define BEETS_UNIT_NAME "Beets P8"
+#elif BEETS_VARIANT == 3
+#define BEETS_UNIT_NAME "Beets PM8"
+#elif BEETS_VARIANT == 4
+#define BEETS_UNIT_NAME "Beets PM16"
+#elif BEETS_VARIANT == 5
+#define BEETS_UNIT_NAME "Beets PM32"
+#elif BEETS_VARIANT == 6
+#define BEETS_UNIT_NAME "Beets PMX32"
+#else
+#error "unknown BEETS_VARIANT"
+#endif
 
 /* ---- Granular engine ---------------------------------------------------- */
 

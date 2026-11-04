@@ -1,0 +1,167 @@
+# Beets
+
+A granular texture processor for the Korg Nu:Tekt NTS-1 digital kit mkII, built
+as a **delay effect (delfx) unit** with logue SDK 2.0.0.
+
+Beets is a port of **Mutable Instruments Beads by Emilie Gillet**. The
+granular and delay DSP is Beads' own code (MIT license), vendored with
+minimal, individually marked patches. The controls had to change, because
+the NTS-1 has 11 parameters and no CV inputs; the algorithm did not.
+"Beets" is not a Mutable Instruments product, and neither Mutable
+Instruments nor KORG endorses it or is affiliated with it.
+
+> **Status: not yet verified on hardware.** The unit builds and fits the
+> 24 KB budget, and on the host it matches upstream Beads bit for bit (see
+> below). It has not yet been loaded on an NTS-1 mkII. The grain count is
+> still the conservative phase-3 value of 4 until CPU and SDRAM costs are
+> measured on the device with the profiling builds. See [NOTES.md](NOTES.md).
+
+## Parameters
+
+| # | Name | Range | Control | What it does |
+|---:|---|---|---|---|
+| 0 | TIME | 0–1023 | knob A | Where in the 4 s buffer grains start (delay time in delay mode) |
+| 1 | SIZE | 0–1023 | knob B | Grain length; below 1/3 grains play in reverse. **Fully clockwise = delay mode** (enters above 0.99, leaves below 0.98, 1.5 s crossfade) |
+| 2 | MIX | D100–W100 | DEL + knob B | Dry/wet |
+| 3 | DENS | −512–511 | menu | **Bipolar.** Left of centre: regular grains, faster towards the left end. Right: randomised grains, faster towards the right end. **Centre is silence** (Beads' 0.48–0.52 dead zone). With a clock: left = divisions 1–16, right = probability |
+| 4 | SHPE | 0–1023 | menu | Grain envelope, from square through bell to reversed ramp |
+| 5 | PTCH | ±24.0 semitones | menu | Grain transposition |
+| 6 | FDBK | 0–1023 | menu | Feedback |
+| 7 | RAND | −100–100 | menu | Randomises the **grain itself**: SIZE attenuverter (and its delay-mode filter), SHAPE attenuverter × 0.75. Negative = sparse random jumps, positive = continuous scatter |
+| 8 | PRND | −100–100 | menu | Randomises **where and when it plays**: PITCH attenuverter (positive = random-walk pitch drift), TIME attenuverter × 0.75 |
+| 9 | MODE | DIGS / DIGM | menu | Digital 16-bit media, stereo or mono (mono doubles the buffer to 8 s) |
+| 10 | FRZE | off / on | menu | Freeze the buffer |
+
+RAND and PRND use Beads' attenuverter response: a small dead zone around
+0, then a quadratic curve.
+
+### Performance controls
+
+- **MIDI notes = the SEED button.** As on Beads, SEED starts *locked*
+  (free-running grains). A note press unlocks it: grains are then generated
+  only while a note is held, and in the dead zone each note-on seeds one
+  grain. Holding a note for 4 seconds re-locks. In delay mode, note presses
+  tap the tempo.
+- **Pitch bend** adds ±2 semitones to PTCH.
+- **Tempo = the SEED input.** The NTS-1's 4PPQN clock (internal tempo or
+  external MIDI clock) is fed to Beads as if a clock were patched into
+  SEED. While ticks are arriving and SEED is locked, DENS selects clock
+  divisions (left of centre) or grain probability (right of centre), and
+  delay mode syncs its taps to the clock. Without ticks for 4 s, Beets
+  returns to free-running.
+
+Whether a delfx actually receives note and pitch-bend events, and whether
+the tick runs while the transport is stopped, still has to be confirmed on
+the device (NOTES.md, hardware checklist).
+
+## Departures from Beads
+
+- **No reverb.** Beads' reverb stage (and its pre-reverb limiter) is removed.
+  Put any revfx after Beets; the NTS-1 mkII has its own reverb slot and
+  memory pool. The chain ends at Beads' output limiter.
+- **No CV.** All CV inputs and the `cv`/`has_cv` paths are gone. The
+  attenuverters remain: they are Beads' internal randomisation, not CV.
+  The gate output is gone too.
+- **Four attenuverters on two controls** (RAND, PRND), as in the table above.
+- **One media type so far:** digital 16-bit (stereo and mono). Clean tape,
+  vintage digital and dirty tape are separate code instances that do not fit
+  the 24 KB budget together; they can be enabled at build time
+  (`BEETS_MEDIA_*`) but are not wired to MODE yet.
+- **Grain ceiling.** Beads plays up to 32 grains. Here the count is a build
+  constant (`BEETS_NUM_GRAINS`), currently 4, to be raised from hardware
+  measurements. Each grain costs 80 bytes of the 24 KB RAM budget.
+- **Pitch** is set directly in 0.1-semitone steps; Beads' knob snaps to
+  musical intervals.
+- The sine LFOs used by delay-mode tap modulation use the firmware's
+  `fx_sinf` table. Apart from the removed reverb and pre-reverb limiter
+  (which only acts on peaks above 0.9), this is the only difference the
+  upstream comparison measures: at most 2.7e-5 (−91 dBFS).
+- No auto-gain on the input, and no seed-input delay (Beads delays SEED by
+  2.5 ms to line it up with CV sampling; there is no CV here).
+
+## Building
+
+Requirements: logue-sdk (with the CMSIS submodule) and arm-none-eabi GCC.
+
+**Docker (SDK toolchain):** clone or symlink this repository as
+`logue-sdk/platform/nts-1_mkii/beets`, then:
+
+```bash
+docker/run_interactive.sh
+```
+
+```bash
+build nts-1_mkii/beets
+```
+
+**Out of tree, with a system toolchain:**
+
+```bash
+git clone --recursive https://github.com/korginc/logue-sdk.git ../logue-sdk
+```
+
+```bash
+./build.sh LOGUE_SDK=../logue-sdk GCC_BIN_PATH=/usr/bin
+```
+
+```bash
+scripts/audit.sh
+```
+
+The result is `beets.nts1mkiiunit`. `scripts/audit.sh` prints the size and
+checks for soft-float doubles, heap use, VLAs and static constructors.
+
+Build options go in `BEETS_DEFS`, for example
+`./build.sh BEETS_DEFS="-DBEETS_PROFILE -DBEETS_NUM_GRAINS=8"`:
+
+| Define | Effect |
+|---|---|
+| `BEETS_NUM_GRAINS=n` | grain count (≥ 4) |
+| `BEETS_ENABLE_MONO=0` | drop DIGM (−2.9 KB code) |
+| `BEETS_STATE_IN_SDRAM` | keep DSP state in SDRAM instead of RAM |
+| `BEETS_PROFILE` | DWT profiler; parameter 9 becomes a DIAG readout |
+| `BEETS_STRESS_TEST` | add Beads' `WasteCPUCycles` worst-case load |
+
+`scripts/release.sh` builds the shipping unit plus the measurement variants
+into `release/`.
+
+## Tests
+
+```bash
+make -C host LOGUE_SDK=../logue-sdk
+```
+
+```bash
+make -C host fidelity LOGUE_SDK=../logue-sdk EURORACK=../eurorack STMLIB=../stmlib
+```
+
+The first runs the host unit tests. The second builds upstream Beads from
+unmodified eurorack and stmlib checkouts next to the port, runs both through
+24 scenarios (≈131 s of audio covering every mode) and compares the output
+bit for bit. Result: identical to upstream-without-reverb when upstream's
+sine table is used, and within 2.7e-5 with `fx_sinf`.
+
+Host tests check correctness only. CPU cost has to be measured on the device.
+
+## Layout
+
+```
+src/            unit.cc (SDK shims), header.c, beads_processor.h (adaptation
+                layer), beets_config.h (all constants), profiler.h, mem.c
+vendor/beads/   Beads DSP, patched where marked "// Beets:"
+vendor/stmlib/  stmlib subset, same convention
+ld/exports.ver  linker version script (exports only the unit API)
+host/           native tests and the upstream comparison
+scripts/        audit, release builds, pitch-table generator
+NOTES.md        measurement log and engineering decisions
+```
+
+## Credits and licenses
+
+- DSP: **Mutable Instruments Beads** and **stmlib** by Emilie Gillet, MIT
+  license.
+- Build system and unit template: KORG logue SDK, BSD 3-Clause license.
+- Beets code: MIT license ([LICENSE](LICENSE)).
+
+Full texts are in [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES). The
+original copyright headers are kept in every vendored file.
