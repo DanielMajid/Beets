@@ -8,8 +8,10 @@ CXXFLAGS := -std=c++11 -O2 -g -DTEST -Wall -Wno-unused-variable -Wno-unused-para
 INC := -Istub -I. -I../src -I../vendor -I$(COMMON)
 VENDOR_SRC := $(wildcard ../vendor/beads/dsp/*.cc) ../vendor/stmlib/dsp/units.cc ../vendor/stmlib/utils/random.cc
 
-tests: $(OUT)/test_phase1
-	$(OUT)/test_phase1
+TESTS := test_phase1 test_profiler
+
+tests: $(addprefix $(OUT)/,$(TESTS))
+	@for t in $^; do echo "== $$t"; $$t || exit 1; done
 
 $(OUT)/%: %.cc ../src/header.c $(wildcard ../src/*.h)
 	@mkdir -p $(OUT)

@@ -4,8 +4,7 @@
  *
  * File: beads_processor.h
  *
- * PHASE 1: delay line only. 768 KB of SDRAM, 16-bit stereo DelayLine from
- * Beads, written with the input and read back at a fixed delay.
+ * PHASE 2: phase-1 fixed delay + DWT instrumentation (profiler.h).
  */
 
 #ifndef BEETS_BEADS_PROCESSOR_H_
@@ -18,6 +17,7 @@
 
 #include "beets_config.h"
 #include "beads/dsp/delay_line.h"
+#include "profiler.h"
 
 class BeetsProcessor {
  public:
@@ -55,6 +55,10 @@ class BeetsProcessor {
     // unit_init); unit_reset() clears incrementally instead.
     delay_line_.Init(banks_);
     clear_offset_ = kTotalDelayBytes;
+
+    ticks_received_ = ticks_consumed_ = 0;
+    profiler_.Init(frames_per_buffer_);
+    profiler_.ProbeSdram(buffer_1_, kBuffer1Size);
     return k_unit_err_none;
   }
 
@@ -70,23 +74,53 @@ class BeetsProcessor {
   void Reset() { reset_request_ = true; }
 
   void SetParameter(uint8_t index, int32_t value) {
+#ifdef BEETS_PROFILE
+    if (index == BEETS_PARAM_MODE) profiler_.Select(value);
+#endif
     (void)index;
     (void)value;
   }
 
   const char* GetParameterString(uint8_t index, int32_t value) {
+#ifdef BEETS_PROFILE
+    if (index == BEETS_PARAM_MODE) return profiler_.Format(value);
+#endif
     (void)index;
     (void)value;
     return NULL;
   }
 
-  void TempoTick(uint32_t counter) { (void)counter; }
-  void NoteOn(uint8_t note, uint8_t velocity) { (void)note; (void)velocity; }
+  // Non-audio context: count only. Consumed at the start of the next render.
+  void TempoTick(uint32_t counter) {
+    (void)counter;
+    ++ticks_received_;
+    profiler_.OnTick();
+  }
+  void NoteOn(uint8_t note, uint8_t velocity) {
+    (void)note;
+    (void)velocity;
+    profiler_.OnNoteOn();
+  }
   void NoteOff(uint8_t note) { (void)note; }
   void AllNoteOff() {}
-  void PitchBend(uint16_t bend) { (void)bend; }
+  void PitchBend(uint16_t bend) {
+    (void)bend;
+    profiler_.OnPitchBend();
+  }
 
   void Render(const float* in, float* out, uint32_t frames) {
+    profiler_.BeginRender(frames);
+    profiler_.ServiceRequests();
+    const uint32_t received = ticks_received_;
+    const bool tick = received != ticks_consumed_;
+    ticks_consumed_ = received;
+    profiler_.OnDspTickInterval(tick, frames);
+    const bool steady = RenderInternal(in, out, frames);
+    profiler_.EndRender(steady, 0);
+  }
+
+ private:
+  bool RenderInternal(const float* in, float* out, uint32_t frames) {
     if (reset_request_) {
       reset_request_ = false;
       delay_line_.Reset(false);  // pointers only; memory below.
@@ -95,7 +129,7 @@ class BeetsProcessor {
     if (ClearStep()) {
       // Buffer still being cleared: pass the dry signal through.
       memcpy(out, in, frames * 2 * sizeof(float));
-      return;
+      return false;
     }
     for (uint32_t i = 0; i < frames; ++i) {
       beads::FloatFrame s;
@@ -107,9 +141,9 @@ class BeetsProcessor {
       out[2 * i] = s.l + 0.5f * d.l;
       out[2 * i + 1] = s.r + 0.5f * d.r;
     }
+    return true;
   }
 
- private:
   // Zeroes one chunk of delay memory per call. Returns true while clearing.
   // 0x00 is silence for the 16-bit and 12-bit Item<> layouts.
   bool ClearStep() {
@@ -131,6 +165,10 @@ class BeetsProcessor {
   uint8_t* banks_[kNumBanks];
   uint32_t clear_offset_;
   volatile bool reset_request_;
+  volatile uint32_t ticks_received_;
+  uint32_t ticks_consumed_;
+
+  Profiler profiler_;
 
   beads::DelayLine<beads::RESOLUTION_16_BIT, kStereoMaxDelay, 2> delay_line_;
 };

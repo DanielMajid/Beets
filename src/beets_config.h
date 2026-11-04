@@ -69,6 +69,6 @@ enum {
 };
 
 /* ---- Diagnostics (BEETS_PROFILE builds) --------------------------------- */
-#define BEETS_DIAG_COUNT 20
+#define BEETS_DIAG_COUNT 28 /* == DIAG_LAST in profiler.h (static_assert there) */
 
 #endif /* BEETS_CONFIG_H_ */
