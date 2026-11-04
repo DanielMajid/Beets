@@ -67,9 +67,13 @@ int main() {
   CHECK(fabsf(s_processor.debug_attenuverter_rand() + 1.0f) < 1e-3f, "attenuverter -full scale");
   unit_set_param_value(BEETS_PARAM_RAND, 0);
   unit_set_param_value(BEETS_PARAM_PITCH, 120); unit_pitch_bend(0x3fff); Run(0.1);
-  CHECK(fabsf(s_processor.debug_pitch() - 14.0f) < 0.01f, "PTCH 12.0 + full bend 2 (%f)", s_processor.debug_pitch());
+  CHECK(fabsf(s_processor.debug_pitch() - 36.0f) < 0.01f, "PTCH 12.0 + full bend 24 (%f)", s_processor.debug_pitch());
+  unit_pitch_bend(0); Run(0.1);
+  CHECK(fabsf(s_processor.debug_pitch() + 12.0f) < 0.01f, "PTCH 12.0 - full bend 24 (%f)", s_processor.debug_pitch());
   unit_pitch_bend(0x2000); unit_set_param_value(BEETS_PARAM_PITCH, 0);
-  CHECK(unit_get_param_str_value(BEETS_PARAM_MODE, 6) && !strcmp(unit_get_param_str_value(BEETS_PARAM_MODE, 6), "DIGS"), "MODE string DIGS");
+#if BEETS_ENABLE_MONO
+  CHECK(unit_get_param_str_value(BEETS_PARAM_SYNC, 3) && !strcmp(unit_get_param_str_value(BEETS_PARAM_SYNC, 3), "SYNM"), "MODE string SYNM");
+#endif
 
   // ---- density: centre is silence, sides produce grains (MIX fully wet)
   unit_set_param_value(BEETS_PARAM_MIX, 1000);
@@ -83,37 +87,44 @@ int main() {
   CHECK(centre < 1e-3, "dead zone is silent");
   CHECK(regular > 0.02 && randomised > 0.02, "grains on both sides of centre");
 
-  // ---- SEED via notes (ui.cc state machine)
-  CHECK(s_processor.debug_seed_locked(), "seed locked at boot");
-  unit_note_on(60, 100); Run(0.05);
-  CHECK(!s_processor.debug_seed_locked() && s_processor.debug_seed_pressed(), "press: unlocked + on");
-  unit_note_off(60); Run(0.05);
-  CHECK(!s_processor.debug_seed_locked() && !s_processor.debug_seed_pressed(), "release: off, stays unlocked");
-  const double gated_off = Run(1.0);  // regular density, gate low -> no new grains
-  printf("unlocked, no gate: rms %.5f\n", gated_off);
-  CHECK(gated_off < regular * 0.2, "pulse train stops while SEED is released");
-  unit_note_on(60, 100); Run(4.1);
-  CHECK(s_processor.debug_seed_locked() && !s_processor.debug_seed_pressed(), "4 s hold re-locks");
-  unit_note_off(60); Run(0.05);
-  CHECK(s_processor.debug_seed_locked(), "still locked after release");
+  // ---- notes do not touch SEED: grains keep free-running
+  unit_note_on(60, 100); Run(0.5);
+  unit_note_off(60);
+  const double after_note = Run(1.0);
+  CHECK(after_note > regular * 0.5, "free-running grains unaffected by notes (%f)", after_note);
 
-  // ---- clock: ticks make the SEED input "patched", 4 s silence unpatches
-  CHECK(!s_processor.debug_clock_patched(), "no clock at start");
-  for (int i = 0; i < 40; ++i) { unit_tempo_4ppqn_tick(i); Run(0.125); }  // 120 BPM 16ths
-  CHECK(s_processor.debug_clock_patched(), "ticks -> patched");
-  const double divided = Run(0.0);
-  (void)divided;
-  Run(4.1);
-  CHECK(!s_processor.debug_clock_patched(), "4 s without ticks -> unpatched");
+  // ---- SYNC: ticks reach Beads' SEED input only while SYNC is on
+  for (int i = 0; i < 16; ++i) { unit_tempo_4ppqn_tick(i); Run(0.125); }
+  CHECK(!s_processor.debug_clock_patched(), "SYNC off: ticks ignored");
+  unit_set_param_value(BEETS_PARAM_SYNC, BEETS_ENABLE_MONO ? 2 : 1);
+  CHECK(s_processor.debug_clock_patched(), "SYNC on -> clock patched");
+  unit_set_param_value(BEETS_PARAM_DENSITY, -512);  // fully left: one grain per tick (/1)
+  for (int i = 0; i < 32; ++i) { unit_tempo_4ppqn_tick(i); Run(0.125); }
+  double synced = 0;
+  for (int i = 0; i < 32; ++i) { unit_tempo_4ppqn_tick(i); synced += Run(0.125) / 32; }
+  printf("SYNC on, clocked divider: rms %.4f\n", synced);
+  CHECK(synced > 0.01, "clock-divided grains play");
+  double stopped = 0;
+  Run(4.0);
+  stopped = Run(1.0);
+  printf("SYNC on, clock stopped: rms %.5f\n", stopped);
+  CHECK(stopped < synced * 0.2, "no clock -> no new grains (as a patched Beads)");
+  // Synced delay mode: SIZE max, ticks arriving.
+  unit_set_param_value(BEETS_PARAM_SIZE, 1023);
+  for (int i = 0; i < 48; ++i) { unit_tempo_4ppqn_tick(i); Run(0.125); }
+  unit_set_param_value(BEETS_PARAM_SIZE, 512);
+  unit_set_param_value(BEETS_PARAM_SYNC, 0);
+  CHECK(!s_processor.debug_clock_patched(), "SYNC off again");
 
   // ---- block sizes and in-place rendering
   Run(0.2, 37); Run(0.2, 5); Run(0.2, 12); Run(0.2, 1);
   Run(0.2, 64, true);
 
+#if BEETS_ENABLE_MONO
   // ---- MODE change and reset clear incrementally, dry passes through
-  unit_set_param_value(BEETS_PARAM_MODE, 7); Run(0.0, 64);
+  unit_set_param_value(BEETS_PARAM_SYNC, 1);  // DIGM
   FillInput(64); unit_render(in_buf, out_buf, 64);
-  CHECK(s_processor.debug_mode() == 7 && s_processor.debug_clearing(), "MODE 7 -> mono + clearing");
+  CHECK(s_processor.debug_mono() && s_processor.debug_clearing(), "DIGM -> mono + clearing");
   int calls = 1;
   while (s_processor.debug_clearing()) {
     FillInput(64); unit_render(in_buf, out_buf, 64); ++calls;
@@ -121,6 +132,8 @@ int main() {
   }
   printf("clear after MODE change took %d render calls\n", calls);
   CHECK(calls == 48, "768 KB / 16 KB = 48 calls (%d)", calls);
+  Run(2.0);  // mono granular
+#endif
   unit_reset(); Run(0.01);
   CHECK(s_processor.debug_clearing(), "reset -> clearing");
   Run(0.1);

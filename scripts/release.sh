@@ -3,7 +3,7 @@
 # Pass the same make arguments as build.sh (LOGUE_SDK=..., GCC_BIN_PATH=...).
 #
 #  file                      name         defines
-#  beets.nts1mkiiunit        Beets        shipping default (4 grains, DIGS/DIGM, state in RAM)
+#  beets.nts1mkiiunit        Beets        shipping default (4 grains, DIGS, state in RAM)
 #  beets-p4.nts1mkiiunit     Beets P4     profiler, 4 grains, state in RAM
 #  beets-p8.nts1mkiiunit     Beets P8     profiler, 8 grains, state in RAM
 #  beets-pm8.nts1mkiiunit    Beets PM8    profiler, 8 grains, DSP state in SDRAM

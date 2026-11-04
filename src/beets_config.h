@@ -73,29 +73,24 @@
    768 KB / 16 KB = 48 render calls. */
 #define BEETS_CLEAR_CHUNK_BYTES (16 * 1024)
 
-/* ---- Media ---------------------------------------------------------------
-   MODE value = media * 2 + mono, media numbering as beads::Processor::Media:
-   0 DIRTY_TAPE, 1 CLEAN_TAPE, 2 VINTAGE_DIGITAL, 3 DIGITAL.
-   Only DIGITAL is compiled in; the range is trimmed so the values keep
-   their meaning if more media are added later. */
+/* ---- Media and slot 9 ------------------------------------------------------
+   Only the DIGITAL media (16-bit) is compiled in. DIGM (mono, 8 s buffer)
+   costs ~2.9 KB of code - room for ~36 grains - so it is off by default but
+   kept buildable with -DBEETS_ENABLE_MONO=1.
+
+   Slot 9 depends on that choice:
+     BEETS_ENABLE_MONO=0 (default): "SYNC" on/off.
+     BEETS_ENABLE_MONO=1: "MODE", 4 strings = mono + 2 * sync:
+                          DIGS, DIGM, SYNS (stereo + sync), SYNM (mono + sync).
+   Profiling builds always use BEETS_ENABLE_MONO=0 (keeps them inside 24 KB;
+   stereo is the heavier path) and put the DIAG readout in slot 10. */
 #ifndef BEETS_ENABLE_MONO
-#ifdef BEETS_PROFILE
-/* MODE is replaced by DIAG in profiling builds, so DIGM is unreachable there;
-   dropping its code keeps the instrumented build inside 24 KB. Stereo is
-   the heavier path, i.e. the one worth measuring. */
 #define BEETS_ENABLE_MONO 0
-#else
-#define BEETS_ENABLE_MONO 1
 #endif
+#if defined(BEETS_PROFILE) && BEETS_ENABLE_MONO
+#error "profiling builds are DIGS-only (DIAG replaces FRZE, size budget)"
 #endif
 #define BEETS_MONO_ENABLED BEETS_ENABLE_MONO
-#define BEETS_MODE_MIN  6
-#if BEETS_ENABLE_MONO
-#define BEETS_MODE_MAX  7   /* DIGS, DIGM */
-#else
-#define BEETS_MODE_MAX  6   /* DIGS only: mono path compiled out */
-#endif
-#define BEETS_MODE_INIT 6
 
 /* Optional media, each a full GranularProcessor template instance:
    define BEETS_MEDIA_VINTAGE_DIGITAL, BEETS_MEDIA_CLEAN_TAPE or
@@ -103,17 +98,14 @@
    BEETS_STRESS_TEST: calls Processor::WasteCPUCycles() from every block
    (upstream's dummy granular player) as the worst-case load. */
 
-/* ---- SEED (note-on) and clock --------------------------------------------- */
-/* Beads ui.cc: holding SEED for 4000 ms re-locks it (free-running grains). */
-#define BEETS_SEED_LONG_PRESS_MS 4000
+/* ---- SEED and clock --------------------------------------------------------
+   SEED is always in Beads' default "locked" state (free-running grains); the
+   NTS-1 has no SEED button. SYNC on connects the 4PPQN clock to Beads' SEED
+   input, as if a clock were patched into the jack. */
 /* A 4PPQN tick becomes a gate pulse this long on the SEED input (1 ms). */
 #define BEETS_CLOCK_PULSE_SAMPLES 48
-/* The clock counts as "patched" while ticks keep arriving; after this many
-   samples without one it is "unpatched" again (4 s, Beads'
-   kDividerResetInterval). */
-#define BEETS_CLOCK_TIMEOUT_SAMPLES (4 * 48000)
-/* Pitch bend range, semitones each way, added to PTCH. */
-#define BEETS_PITCH_BEND_RANGE 2.0f
+/* Pitch bend range, semitones each way, added to PTCH (+/- 2 octaves). */
+#define BEETS_PITCH_BEND_RANGE 24.0f
 
 /* ---- Parameter indices -------------------------------------------------- */
 enum {
@@ -126,8 +118,8 @@ enum {
   BEETS_PARAM_FEEDBACK,
   BEETS_PARAM_RAND,
   BEETS_PARAM_PRND,
-  BEETS_PARAM_MODE, /* DIAG in BEETS_PROFILE builds */
-  BEETS_PARAM_FREEZE,
+  BEETS_PARAM_SYNC,   /* SYNC, or MODE (mono + 2 * sync) with BEETS_ENABLE_MONO */
+  BEETS_PARAM_FREEZE, /* DIAG in BEETS_PROFILE builds */
   BEETS_NUM_PARAMS
 };
 

@@ -44,14 +44,18 @@ const __unit_header unit_header_t unit_header = {
         {-100, 100, 0, 0, k_unit_param_type_none, 0, 0, 0, {"RAND"}},
         // PITCH + TIME attenuverters (where and when it plays)
         {-100, 100, 0, 0, k_unit_param_type_none, 0, 0, 0, {"PRND"}},
+#if BEETS_ENABLE_MONO
+        // mono + 2 * sync: DIGS, DIGM, SYNS, SYNM
+        {0, 3, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"MODE"}},
+#else
+        // 4PPQN clock -> Beads SEED input (clock divider / probability)
+        {0, 1, 0, 0, k_unit_param_type_onoff, 0, 0, 0, {"SYNC"}},
+#endif
 #ifdef BEETS_PROFILE
-        // Diagnostic readout replaces MODE in profiling builds only.
+        // Diagnostic readout replaces FRZE in profiling builds only.
         {0, BEETS_DIAG_COUNT - 1, 0, 0, k_unit_param_type_strings, 0, 0, 0, {"DIAG"}},
 #else
-        // media x mono/stereo; range trimmed to the compiled-in media.
-        {BEETS_MODE_MIN, BEETS_MODE_MAX, BEETS_MODE_MIN, BEETS_MODE_INIT,
-         k_unit_param_type_strings, 0, 0, 0, {"MODE"}},
-#endif
         {0, 1, 0, 0, k_unit_param_type_onoff, 0, 0, 0, {"FRZE"}},
+#endif
     },
 };

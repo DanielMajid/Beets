@@ -58,15 +58,19 @@ or alloca), `.init_array` empty.
 | 3–7 | full port, first link (DIGS+DIGM, 4 grains) | 31879 | 488 | 3876 | **36243 — over** |
 | 3–7 | + `ld/exports.ver` (export only `unit_*`) | 23690 | 188 | 3876 | 27754 |
 | 3–7 | + scratch buffers sized to the 12-frame block | 23690 | 188 | 2760 | 26638 |
-| 3–7 | + pitch tables rebuilt into SDRAM, compact `mem*` | **21374** | **188** | **2772** | **24334** |
+| 3–7 | + pitch tables rebuilt into SDRAM, compact `mem*` | 21374 | 188 | 2772 | 24334 |
+| 7 | decisions below: DIGS only, SYNC param, SEED auto, guard | **17990** | **152** | **2736** | **20878** |
+| 7 | same with `BEETS_ENABLE_MONO=1` (DIGM back) | 21046 | 172 | 2736 | 23954 |
+| 7 | DIGS only, 32 grains, state in RAM | 18146 | 152 | 4976 | 23274 |
 
 See "Phase 3–7" below for the per-configuration matrix.
 
 ### Phase 2 — instrumentation
 
 `src/profiler.h`, enabled with `./build.sh BEETS_DEFS=-DBEETS_PROFILE`. In that
-build parameter slot 9 is **DIAG** (instead of MODE; MODE stays at its default,
-DIGS, i.e. the heavier stereo path). Turn the encoder to a DIAG value to read
+build parameter slot 10 is **DIAG** (instead of FRZE; slot 9 was MODE when
+phase 2 was written and is SYNC now). Profiling builds are DIGS-only, the
+heavier stereo path. Turn the encoder to a DIAG value to read
 the figure; re-select it to refresh. Host test: `host/test_profiler.cc`
 (fake counter that starts 1 M cycles before wrap; all figures checked).
 
@@ -176,10 +180,11 @@ Other host tests (`make -C host`): `test_units` (pitch tables, 0 of 514
 mismatches), `test_profiler`, `test_unit` (the real `unit.cc` callbacks):
 SDK error codes; SIZE 1023 > 0.99 and 1002 < 0.98; DENS 0 inside the dead
 zone and wet-silent; grains on both sides of centre; attenuverter dead zone
-and full scale; pitch + bend; SEED press/release/4 s re-lock; ticks →
-patched, 4 s silence → unpatched; 1, 5, 12, 37 and 64-frame and in-place
-renders; MODE change and `unit_reset` clear in exactly 48 calls with dry
-pass-through.
+and full scale; pitch + ±24 semitone bend; notes leave free-running grains
+alone; ticks ignored with SYNC off; SYNC on → clock-divided grains, none once
+the clock stops; synced delay mode; 1, 5, 12, 37 and 64-frame and in-place
+renders; `unit_reset` (and DIGS→DIGM in `test_unit_mono`) clear in exactly
+48 calls with dry pass-through.
 
 ### Upstream hazard found by the comparison: integer divide by zero
 
@@ -193,12 +198,14 @@ the interval. On the NTS-1 it **crashes the instrument if the firmware sets
 DIV_0_TRP**. The probability is about 16/6000 per entry into synced delay
 mode at 120 BPM (any first interval below 16 samples).
 
-`delay_controller.cc` is on the read-only list, so it is unpatched.
-**PENDING (hardware): DIAG 27** shows `10 × DIV_0_TRP + UNALIGN_TRP`. If the
-first digit is 1, the minimal fix is a one-line guard at line 277
-(`max_delay_ / std::max(slice_duration, 1)`), which leaves every non-zero
-case bit-identical. (UNALIGN_TRP matters only if the packed 12-bit media are
-ever compiled in.)
+**Fixed (decision 4 below):** `delay_controller.cc` now computes
+`slice_duration ? max_delay_ / slice_duration : 0`. That is exactly what
+Beads' CPU produces, so behaviour matches the module whether or not the
+NTS-1 firmware enables the trap, and every non-zero case is unchanged
+(fidelity test still bit-exact). `make -C host fidelity` also runs the port
+with clock edges placed on segment starts, where upstream traps on x86:
+no trap. DIAG 27 still reports the trap bits for the record (UNALIGN_TRP
+matters if the packed 12-bit media are ever compiled in).
 
 ### Size engineering
 
@@ -243,18 +250,20 @@ MultitapDelay::Render (128) → Tap::Render (104) → DelayLine::Read (208)`
 - Pots: one-pole 0.05 per block and hysteresis 0.001 on TIME, as
   `cv_reader.cc`; RAND/PRND pass through Beads' attenuverter law
   `(2/0.47)·v·max(|v|−0.03, 0)`. Mix and feedback: `× 1.005`, clamped, as `beads.cc`.
-- SEED button = MIDI notes, with the `ui.cc` state machine: locked at boot;
-  press → unlocked + gate; release → gate off; 4000 ms hold → locked.
-- SEED input = 4PPQN tick as a 1 ms pulse. The clock counts as patched while
-  ticks keep arriving and unpatches after 4 s without one (Beads'
-  `kDividerResetInterval`). In locked state a patched clock routes to
-  `RenderDivider` (divisions 1–16, probability skipping), exactly as a
-  patched SEED jack does on Beads. No extra smoothing: `DelayClock` and
-  `RenderDivider` handle jitter.
+- SEED button: always `SEED_BUTTON_STATE_LOCKED` (Beads' power-on "auto"
+  state). Notes do nothing (counted for DIAG 25 only).
+- SEED input = 4PPQN tick as a 1 ms pulse, connected while **SYNC** (slot 9)
+  is on. Locked + patched routes to `RenderDivider` (divisions 1–16,
+  probability skipping) and synced delay taps, exactly as a patched SEED
+  jack does on Beads; with SYNC on and no ticks, no new grains start, as on
+  the module. No extra smoothing: `DelayClock` and `RenderDivider` handle
+  jitter.
+- Pitch bend: ±24 semitones added to PTCH.
 - Ticks are consumed at the start of the next render call. Whether that
   quantisation matters depends on DIAG 14–17 (see phase 2).
-- MODE changes and `unit_reset` call `Processor::Configure`, then zero the
-  768 KB at 16 KB per render call (48 calls); dry passes through meanwhile.
+- `unit_reset` (and a DIGS/DIGM change when DIGM is compiled in) calls
+  `Processor::Configure`, then zeroes the 768 KB at 16 KB per render call
+  (48 calls); dry passes through meanwhile.
 - `unit_set_param_value` only caches into `raw_[]`; all DSP state is
   touched from `unit_render`.
 
@@ -271,24 +280,26 @@ N   = floor((T - U0) / g), also <= RAM limit for the chosen configuration
 worst case = U0 + N*g + stress (DIAG 1 with "Beets PMX32")
 ```
 
-Prebuilt measurement units (`scripts/release.sh`, all fit 24 KB):
+Measurement units (`scripts/release.sh` builds them into `release/`, not
+committed; all fit 24 KB):
 
 | File / name | Purpose |
 |---|---|
-| `beets.nts1mkiiunit` / Beets | shipping default (4 grains) |
+| `beets.nts1mkiiunit` / Beets | shipping default (DIGS, 4 grains) |
 | `beets-p4` / Beets P4, `beets-p8` / Beets P8 | profiler, state in RAM: U0 and g |
 | `beets-pm8` / Beets PM8 | profiler, state in SDRAM: compare with P8 → cost of `BEETS_STATE_IN_SDRAM` |
 | `beets-pm16`, `beets-pm32` | profiler, state in SDRAM, 16 / 32 grains |
 | `beets-pmx32` / Beets PMX32 | + `WasteCPUCycles` stress test (upstream dummy player) |
 
 The decision then follows from the numbers:
-- if P8 ≈ PM8, ship `BEETS_STATE_IN_SDRAM` with N grains and both DIGS and DIGM;
-- otherwise ship DIGS only with N ≤ 32 grains in RAM, or keep DIGM at 4.
+RAM no longer limits this: DIGS-only fits 32 grains with state in RAM
+(23 274 B). N is set by CPU alone. `BEETS_STATE_IN_SDRAM` only matters if
+DIGM is brought back (P8 vs PM8 tells whether that costs CPU).
 
 ## Phase 8 — headroom validation: PENDING (hardware)
 
 Load a heavy user oscillator and a user revfx, then play maximum density,
-minimum SIZE, maximum FDBK, SIZE sweeps through delay mode, MODE switches
+minimum SIZE, maximum FDBK, SIZE sweeps through delay mode, SYNC on/off
 and fast parameter sweeps. Record DIAG 0/1/5/6 and any dropouts.
 
 ## Hardware session checklist
@@ -297,8 +308,24 @@ and fast parameter sweeps. Record DIAG 0/1/5/6 and any dropouts.
 2. 120 BPM internal tempo, transport stopped: DIAG 10 — do ticks arrive?
    Then with arp/sequencer running: DIAG 11–17. Repeat with external MIDI
    clock over USB and over DIN.
-3. Play notes and bend: DIAG 25/26. If they stay 0, a delfx does not receive
-   them; SEED then stays locked (Beads' default), and a menu fallback is needed.
+3. Play notes and bend: DIAG 25/26. Notes are informational only (SEED is
+   always auto); 26 tells whether pitch bend reaches a delfx.
 4. DENS at centre: DIAG 0 (U0). DENS fully right/left, small SIZE: DIAG 0/23/24.
 5. Repeat 4 with P8, PM8, PM16, PM32, PMX32. Fill in phase 4.
 6. Phase 8 with the chosen build.
+
+## Decisions (owner answers, 2026-11-04)
+
+1. **DIGS only**; DIGM stays buildable (`BEETS_ENABLE_MONO=1`; slot 9 then
+   becomes MODE = DIGS / DIGM / SYNS / SYNM). Host tests run both builds.
+2. **SYNC parameter added.** All 11 slots were in use; with one media left,
+   MODE had a single value, so SYNC takes slot 9.
+3. **SEED always auto** (Beads' locked state). Note-driven SEED removed; SYNC
+   gives the clock-synced seed behaviour.
+4. **Divide-by-zero guard** applied, reproducing the Cortex-M7's `x / 0 = 0`
+   (see "Upstream hazard").
+5. DENS default stays at centre (wet-silent at load).
+6. dev_id `0x6A614D44` kept. 7. Name "Beets" kept.
+8. **Pitch bend ±2 octaves.**
+9. **Build output not committed** (`release/*.nts1mkiiunit` ignored).
+10. Push `beets-port` and open a PR once GitHub access works.

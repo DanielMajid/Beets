@@ -45,6 +45,8 @@ int main(int argc, char** argv) {
   setvbuf(stdout, NULL, _IONBF, 0);
   FILE* f = fopen(argv[1], "wb");
   const float gain = argc > 2 ? float(atof(argv[2])) : 1.0f;  // input level
+  // Clock phase offset; 0 puts edges on segment starts (crashes upstream on x86).
+  const uint64_t clock_offset = argc > 3 ? uint64_t(atoi(argv[3])) : 1000;
   g_mem = static_cast<uint8_t*>(calloc(1, 768 * 1024));
   uint8_t* banks[3] = {g_mem, g_mem + 262144, g_mem + 524288};
 #ifdef UPSTREAM
@@ -129,7 +131,7 @@ int main(int argc, char** argv) {
         // Phase offset: an edge on the first synced sample makes upstream
         // DelayClock record a 1-sample interval and divide by zero in
         // DelayController (harmless on ARM without DIV_0_TRP, traps on x86).
-        const bool high = g.clock && ((t + 1000) % uint64_t(g.clock_period)) < 48;
+        const bool high = g.clock && ((t + clock_offset) % uint64_t(g.clock_period)) < 48;
         prev = seed[i] = stmlib::ExtractGateFlags(prev, high);
       }
       if (!g.clock) prev = stmlib::GATE_FLAG_LOW;

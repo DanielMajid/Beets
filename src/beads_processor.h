@@ -14,10 +14,10 @@
  *    blocks = Beads' 4 kHz block rate, and controls are read once per block.
  *  - Pots: one-pole 0.05 per block plus the Beads pot laws (attenuverter dead
  *    zone curve; hysteresis 0.001 on TIME), as in beads/cv_reader.{h,cc}.
- *  - SEED button: MIDI note on/off, with the ui.cc state machine
- *    (locked by default; press = unlock + gate; 4 s hold re-locks).
- *  - SEED input jack: the 4PPQN tick, as 1 ms pulses. Counted as patched
- *    while ticks keep arriving (see BEETS_CLOCK_TIMEOUT_SAMPLES).
+ *  - SEED button: always "locked" (Beads' default, free-running grains).
+ *  - SEED input jack: the 4PPQN tick, as 1 ms pulses, "patched" while the
+ *    SYNC parameter is on (RenderDivider / synced delay taps).
+ *  - Pitch bend: +/- BEETS_PITCH_BEND_RANGE semitones on PTCH.
  *  - Parameter values arrive in a non-audio context: they are only cached
  *    there and picked up by Render().
  */
@@ -123,18 +123,7 @@ class BeetsProcessor {
 
     ticks_received_ = ticks_consumed_ = 0;
     clock_pulse_remaining_ = 0;
-    samples_since_tick_ = BEETS_CLOCK_TIMEOUT_SAMPLES;
     previous_seed_ = stmlib::GATE_FLAG_LOW;
-
-    note_on_events_ = note_off_events_ = 0;
-    note_on_seen_ = note_off_seen_ = 0;
-    all_notes_off_ = false;
-    notes_held_ = 0;
-    seed_locked_ = true;   // ui.cc: seed_button_locked_ = true at boot
-    seed_pressed_ = false;
-    seed_was_held_ = false;
-    seed_held_samples_ = 0;
-    seed_long_press_fired_ = false;
 
     bend_semitones_ = 0.0f;
 
@@ -165,7 +154,7 @@ class BeetsProcessor {
   void SetParameter(uint8_t index, int32_t value) {
     if (index >= BEETS_NUM_PARAMS) return;
 #ifdef BEETS_PROFILE
-    if (index == BEETS_PARAM_MODE) {
+    if (index == BEETS_PARAM_FREEZE) {  // DIAG slot
       profiler_.Select(value);
       return;
     }
@@ -175,13 +164,16 @@ class BeetsProcessor {
 
   const char* GetParameterString(uint8_t index, int32_t value) {
 #ifdef BEETS_PROFILE
-    if (index == BEETS_PARAM_MODE) return profiler_.Format(value);
+    if (index == BEETS_PARAM_FREEZE) return profiler_.Format(value);  // DIAG
 #endif
-    static const char* const kModeStrings[8] = {
-        "DRTS", "DRTM", "CLNS", "CLNM", "VNTS", "VNTM", "DIGS", "DIGM"};
-    if (index == BEETS_PARAM_MODE && value >= 0 && value < 8) {
+#if BEETS_ENABLE_MONO
+    static const char* const kModeStrings[4] = {"DIGS", "DIGM", "SYNS", "SYNM"};
+    if (index == BEETS_PARAM_SYNC && value >= 0 && value < 4) {
       return kModeStrings[value];
     }
+#endif
+    (void)index;
+    (void)value;
     return NULL;
   }
 
@@ -192,17 +184,14 @@ class BeetsProcessor {
     ++ticks_received_;
     profiler_.OnTick();
   }
+  // Notes do not drive SEED (no button to emulate); counted for DIAG only.
   void NoteOn(uint8_t note, uint8_t velocity) {
     (void)note;
     (void)velocity;
-    ++note_on_events_;
     profiler_.OnNoteOn();
   }
-  void NoteOff(uint8_t note) {
-    (void)note;
-    ++note_off_events_;
-  }
-  void AllNoteOff() { all_notes_off_ = true; }
+  void NoteOff(uint8_t note) { (void)note; }
+  void AllNoteOff() {}
   void PitchBend(uint16_t bend) {
     bend_semitones_ = (float(int32_t(bend) - 0x2000) / 8192.0f) *
                       BEETS_PITCH_BEND_RANGE;
@@ -219,10 +208,7 @@ class BeetsProcessor {
     const bool tick = received != ticks_consumed_;
     ticks_consumed_ = received;
     profiler_.OnDspTickInterval(tick, frames);
-    if (tick) {
-      clock_pulse_remaining_ = BEETS_CLOCK_PULSE_SAMPLES;
-      samples_since_tick_ = 0;
-    }
+    if (tick) clock_pulse_remaining_ = BEETS_CLOCK_PULSE_SAMPLES;
 
     if (reset_request_) {
       reset_request_ = false;
@@ -230,7 +216,6 @@ class BeetsProcessor {
       clear_offset_ = 0;
     }
     ApplyMode();
-    UpdateSeedButton(frames);
 
     uint32_t grain_samples = 0;
     bool steady = true;
@@ -264,13 +249,9 @@ class BeetsProcessor {
   float debug_density() const { return pot_density_.value(); }
   float debug_attenuverter_rand() const { return pot_rand_.value(); }
   float debug_pitch() const { return pot_pitch_.value() + bend_semitones_; }
-  bool debug_seed_locked() const { return seed_locked_; }
-  bool debug_seed_pressed() const { return seed_pressed_; }
-  bool debug_clock_patched() const {
-    return samples_since_tick_ < BEETS_CLOCK_TIMEOUT_SAMPLES;
-  }
+  bool debug_clock_patched() const { return SyncOn(); }
   bool debug_clearing() const { return clear_offset_ < kTotalDelayBytes; }
-  int debug_mode() const { return int(media_) * 2 + (mono_ ? 1 : 0); }
+  bool debug_mono() const { return mono_; }
 #endif
 
  private:
@@ -336,25 +317,25 @@ class BeetsProcessor {
     m.dry_wet = pot_dry_wet_.value() * 1.005f;
     CONSTRAIN(m.dry_wet, 0.0f, 1.0f);
 
+#ifdef BEETS_PROFILE
+    const bool freeze_on = false;  // slot 10 is DIAG in profiling builds
+#else
     const bool freeze_on = raw_[BEETS_PARAM_FREEZE] != 0;
+#endif
     for (uint32_t i = 0; i < n; ++i) freeze_[i] = freeze_on;
 
-    // SEED input: 4PPQN ticks as 1 ms gate pulses.
-    const bool patched = samples_since_tick_ < BEETS_CLOCK_TIMEOUT_SAMPLES;
+    // SEED input: 4PPQN ticks as 1 ms gate pulses, connected while SYNC is on.
+    const bool patched = SyncOn();
     for (uint32_t i = 0; i < n; ++i) {
       const bool high = clock_pulse_remaining_ > 0;
       if (high) --clock_pulse_remaining_;
       previous_seed_ = seed_[i] = stmlib::ExtractGateFlags(previous_seed_, high);
     }
     if (!patched) previous_seed_ = stmlib::GATE_FLAG_LOW;  // as beads.cc
-    samples_since_tick_ += n;
-    if (samples_since_tick_ > BEETS_CLOCK_TIMEOUT_SAMPLES)
-      samples_since_tick_ = BEETS_CLOCK_TIMEOUT_SAMPLES;
 
-    const beads::SeedButtonState seed_state = seed_locked_
-        ? beads::SEED_BUTTON_STATE_LOCKED
-        : (seed_pressed_ ? beads::SEED_BUTTON_STATE_ON
-                         : beads::SEED_BUTTON_STATE_OFF);
+    // ui.cc boots with seed_button_locked_ = true; there is no button to
+    // unlock it here, so Beads always runs in its "auto" seed mode.
+    const beads::SeedButtonState seed_state = beads::SEED_BUTTON_STATE_LOCKED;
 
     // The host may render in place; Beads reads `in` after writing `out`
     // (dry signal), so work on a copy.
@@ -368,61 +349,27 @@ class BeetsProcessor {
 #endif
   }
 
-  // MODE: media * 2 + mono. Only compiled-in media are accepted.
+  // Slot 9: SYNC on/off, or (BEETS_ENABLE_MONO) mono + 2 * sync.
+  inline bool SyncOn() const {
+#if BEETS_ENABLE_MONO
+    return (raw_[BEETS_PARAM_SYNC] & 2) != 0;
+#else
+    return raw_[BEETS_PARAM_SYNC] != 0;
+#endif
+  }
+
+  // Mono/stereo switch (only with BEETS_ENABLE_MONO). Beads reconfigures and
+  // clears the delay memory on a media change; the clear is spread over the
+  // next render calls.
   void ApplyMode() {
-#ifndef BEETS_PROFILE
-    int32_t v = raw_[BEETS_PARAM_MODE];
-    if (v < BEETS_MODE_MIN || v > BEETS_MODE_MAX) return;
-    const beads::Processor::Media media = beads::Processor::Media(v >> 1);
-    const bool mono = (v & 1) != 0;
-    if (media != media_ || mono != mono_) {
-      media_ = media;
+#if BEETS_ENABLE_MONO
+    const bool mono = (raw_[BEETS_PARAM_SYNC] & 1) != 0;
+    if (mono != mono_) {
       mono_ = mono;
-      // Beads reconfigures and clears the delay memory on a media change;
-      // the clear is spread over the next render calls.
       dsp().Configure(media_, mono_);
       clear_offset_ = 0;
     }
 #endif
-  }
-
-  // ui.cc OnSwitchPressed / OnSwitchReleased / long press, driven by MIDI
-  // notes: SEED counts as held while any note is held. Called once per
-  // render call (button timing does not need sample accuracy).
-  void UpdateSeedButton(uint32_t frames) {
-    const uint32_t on = note_on_events_;
-    const uint32_t off = note_off_events_;
-    notes_held_ += int32_t(on - note_on_seen_) - int32_t(off - note_off_seen_);
-    note_on_seen_ = on;
-    note_off_seen_ = off;
-    if (all_notes_off_) {
-      all_notes_off_ = false;
-      notes_held_ = 0;
-    }
-    if (notes_held_ < 0) notes_held_ = 0;
-    const bool held = notes_held_ > 0;
-
-    if (held && !seed_was_held_) {
-      // OnSwitchPressed(SWITCH_SEED): unlock, button state on.
-      seed_locked_ = false;
-      seed_pressed_ = true;
-      seed_held_samples_ = 0;
-      seed_long_press_fired_ = false;
-    }
-    if (held) {
-      seed_held_samples_ += frames;
-      if (!seed_long_press_fired_ &&
-          seed_held_samples_ >= uint32_t(BEETS_SEED_LONG_PRESS_MS) * 48u) {
-        // Long press is reported while still held: lock, button state off.
-        seed_locked_ = true;
-        seed_pressed_ = false;
-        seed_long_press_fired_ = true;
-      }
-    } else if (seed_was_held_ && !seed_long_press_fired_) {
-      // OnSwitchReleased after a short press: button state off, stays unlocked.
-      seed_pressed_ = false;
-    }
-    seed_was_held_ = held;
   }
 
   // Zeroes one chunk of delay memory per call. Returns true while clearing.
@@ -474,16 +421,7 @@ class BeetsProcessor {
   volatile uint32_t ticks_received_;
   uint32_t ticks_consumed_;
   uint32_t clock_pulse_remaining_;
-  uint32_t samples_since_tick_;
   stmlib::GateFlags previous_seed_;
-
-  // SEED button (MIDI notes).
-  volatile uint32_t note_on_events_, note_off_events_;
-  uint32_t note_on_seen_, note_off_seen_;
-  volatile bool all_notes_off_;
-  int32_t notes_held_;
-  bool seed_locked_, seed_pressed_, seed_was_held_, seed_long_press_fired_;
-  uint32_t seed_held_samples_;
 
   volatile float bend_semitones_;
 

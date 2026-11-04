@@ -22,7 +22,7 @@
  *
  * CYCCNT is enabled but never zeroed: the firmware may rely on it.
  *
- * Readout: the DIAG parameter (slot 9 in profiling builds). Each value of
+ * Readout: the DIAG parameter (slot 10, replacing FRZE, in profiling builds). Each value of
  * DIAG selects one figure; the string shown is that figure. The display
  * refreshes when the value is re-selected. See NOTES.md for the index table.
  */

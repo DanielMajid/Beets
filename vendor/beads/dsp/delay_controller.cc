@@ -274,7 +274,10 @@ void DelayController::RenderInternal(
         if (new_head) {
           const int slice_duration = int(
               clock_.interval(interval) * tap_ratio[ratio]);
-          const int num_slices = max_delay_ / slice_duration;
+          // Beets: guard - a first clock interval < 16 samples gives
+          // slice_duration 0. Beads' Cortex-M7 returns 0 for x / 0 (DIV_0_TRP
+          // clear); reproduce that instead of trapping if the host enables it.
+          const int num_slices = slice_duration ? max_delay_ / slice_duration : 0;
           if (numerator_quantizer_[i].num_steps() != num_slices) {
             numerator_quantizer_[i].Init(
                 num_slices,

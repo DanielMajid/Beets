@@ -12,8 +12,9 @@ Firmware: ______  Date: ______  Input source: ______
    at the same level). Don't play the keyboard unless a step says to.
 3. **Reset parameters** (DEL held + encoder for the menu):
    TIME ¼ (default), SIZE centre, MIX **W100**, DENS **0** (centre),
-   SHPE centre, PTCH 0, FDBK 0, RAND 0, PRND 0, FRZE off.
-4. **Reading DIAG:** parameter 9. Turn to a DIAG number to show its value;
+   SHPE centre, PTCH 0, FDBK 0, RAND 0, PRND 0, **SYNC off**, FRZE off
+   (profiling units have DIAG instead of FRZE).
+4. **Reading DIAG:** parameter 10 (last in the menu). Turn to a DIAG number to show its value;
    step away and back to refresh it. **DIAG 28 = RST** clears all peaks.
 
 ## The test (profiling units: P4, P8, PM8, PM16, PM32, PMX32)
@@ -22,11 +23,11 @@ Firmware: ______  Date: ______  Input source: ______
 |---|---|---|---|
 | A | Setup, DENS centre (grains stopped) | 10 s | 2, 4, 7, 8, 9, 18, 19, 20, 21, 22, 27; then 0 → **U0** |
 | B | Arp/sequencer **off**, 120 BPM | 10 s | 10 (write it down, wait 10 s, read again) |
-| C | Play 3 notes, move the pitch bend | — | 25, 26. If 25 > 0, **hold one note for 5 s** to re-lock SEED |
-| D | RST. Arp/sequencer **on** at 120 BPM, internal clock | 30 s | 10, 11, 12, 13, 14, 15, 16, 17 |
+| C | Play 3 notes, move the pitch bend | — | 25, 26 (notes don't affect the sound) |
+| D | RST. **SYNC on**, DENS fully left. Arp/sequencer **on** at 120 BPM, internal clock | 30 s | 10, 11, 12, 13, 14, 15, 16, 17 |
 | E | Same as D with **external MIDI clock** at 120 BPM (USB, then DIN) | 30 s each | 11, 12, 13, 14, 15 |
-| F | Clock off. RST. **Max load:** DENS fully right, SIZE fully left, FDBK max, RAND +100, PRND +100 | 30 s | 0, 1, 5, 6, 23, 24 |
-| G | RST. **Delay mode:** SIZE fully right, DENS ¼ left, FDBK half, clock on | 30 s | 0, 1, 5, 6 |
+| F | Clock off, **SYNC off**, DENS back to centre first. RST. **Max load:** DENS fully right, SIZE fully left, FDBK max, RAND +100, PRND +100 | 30 s | 0, 1, 5, 6, 23, 24 |
+| G | RST. **Delay mode:** SIZE fully right, DENS ¼ left, FDBK half, **SYNC on**, clock on | 30 s | 0, 1, 5, 6 |
 | H | RST. Sweep SIZE in and out of delay mode and turn DENS end to end, quickly, for 30 s | 30 s | 1, 6. Any clicks or dropouts? |
 
 ### Results
@@ -71,9 +72,10 @@ same setup as above.
 | 4 | SIZE fully right | crossfades (~1.5 s) into echo delay | |
 | 5 | SIZE back a little | crossfades back to grains | |
 | 6 | RAND / PRND to ±100 | grain length, shape, pitch and position scatter | |
+| 6b | Pitch bend fully up / down | grains shift up / down 2 octaves | |
 | 7 | FRZE on | buffer holds; grains keep playing | |
-| 8 | Arp on at 120 BPM, DENS left | grains locked to clock divisions | |
-| 9 | MODE DIGM | short gap (dry only), then mono with a longer buffer | |
+| 8 | SYNC on, arp on at 120 BPM, DENS fully left then towards centre | one grain per 16th, then slower divisions | |
+| 9 | SYNC on, stop the clock | no new grains; SYNC off restores free-running | |
 | 10 | Step F max-load settings, play the oscillator hard for 2 min | no dropouts, no glitches | |
 | 11 | Step H sweep for 1 min | no dropouts, no glitches | |
 
