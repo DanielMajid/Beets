@@ -1,114 +1,303 @@
-# Beets hardware test worksheet
+# Testing Beets on the NTS-1 mkII
 
-Run the **same test (A–H)** on each profiling unit, then the listening and
-headroom test on the shipping unit. Write the numbers in the tables.
+This guide walks you through testing Beets on the hardware, one step at a
+time. You don't need to understand the numbers you write down: they go
+back into the code to choose how many grains the final unit can afford
+without overloading the NTS-1.
 
-Firmware: ______  Date: ______  Input source: ______
+There are two parts:
 
-## Units to load
+- **Part A — Measurement** (about 45 minutes). You load special
+  "profiling" versions of Beets that show internal numbers on the display,
+  run the same short routine on each, and write the numbers down.
+- **Part B — Listening** (about 15 minutes). You load the normal unit and
+  check that each feature sounds and behaves right, with other effects
+  running.
 
-All in `release/` (built by `scripts/release.sh`, not in git). Each has its
-own unit ID, so several can sit in different delfx slots at once.
+---
 
-| File | Name on device | What it is |
+## Before you start
+
+**You need:**
+
+- The NTS-1 mkII, with headphones or speakers.
+- An audio source plugged into the NTS-1's **AUDIO IN** — a phone or
+  computer playing one short loop on repeat. Use **the same loop at the same
+  volume** for every test, so the numbers can be compared.
+- Optional, for one step: a MIDI clock source (DAW or sequencer) on USB
+  and/or DIN.
+- A copy of this page to write on.
+
+**The unit files** are in `release/` (they aren't in git; run
+`scripts/release.sh` to rebuild them). Load all seven onto the NTS-1 with
+KORG Kontrol Editor or loguecli. Each has its own name, so they can sit in
+different delfx slots at the same time.
+
+| File | Name on the NTS-1 | Used in |
 |---|---|---|
-| `beets.nts1mkiiunit` | Beets | shipping unit: DIGS, 4 grains, no DIAG |
-| `beets-p4.nts1mkiiunit` | Beets P4 | profiling, 4 grains |
-| `beets-p8.nts1mkiiunit` | Beets P8 | profiling, 8 grains |
-| `beets-pm8.nts1mkiiunit` | Beets PM8 | profiling, 8 grains, DSP state in external memory |
-| `beets-pm16.nts1mkiiunit` | Beets PM16 | profiling, 16 grains, state in external memory |
-| `beets-pm32.nts1mkiiunit` | Beets PM32 | profiling, 32 grains, state in external memory |
-| `beets-pmx32.nts1mkiiunit` | Beets PMX32 | PM32 + stress test (extra worst-case grain load) |
+| `beets-p4.nts1mkiiunit` | Beets P4 | Part A |
+| `beets-p8.nts1mkiiunit` | Beets P8 | Part A |
+| `beets-pm8.nts1mkiiunit` | Beets PM8 | Part A |
+| `beets-pm16.nts1mkiiunit` | Beets PM16 | Part A |
+| `beets-pm32.nts1mkiiunit` | Beets PM32 | Part A |
+| `beets-pmx32.nts1mkiiunit` | Beets PMX32 | Part A |
+| `beets.nts1mkiiunit` | Beets | Part B |
 
-## Parameters (current layout)
+The P / PM units differ only in how many grains they run and where they
+keep their working data. You run the same routine on each.
 
-| # | Shipping unit | Profiling units |
+**How to reach the parameters.** Knob A is TIME, knob B is SIZE, and
+DEL + knob B is MIX. Everything else is in the delay edit menu: hold
+**DEL** and turn the **encoder** to choose a parameter, then set its value
+with **knob B** (the logue SDK's description of delfx menus).
+
+| Parameter | What it does |
+|---|---|
+| TIME | where in the recording grains start |
+| SIZE | grain length; **fully right = delay (echo) mode** |
+| MIX | dry/wet |
+| DENS | grain rate. **Centre = no grains.** Left = regular, right = random |
+| SHPE | grain envelope |
+| PTCH | grain pitch |
+| FDBK | feedback |
+| RAND | randomises grain length and shape |
+| PRND | randomises grain pitch and position |
+| SYNC | off = free-running; on = follows the tempo clock |
+| FRZE (normal unit) / **DIAG** (profiling units) | freeze, or the number readout |
+
+---
+
+## Part A — Measurement
+
+### The starting position
+
+Every step below begins from this. Set it now:
+
+| Parameter | Set to |
+|---|---|
+| TIME | its default (about a quarter turn) |
+| SIZE | centre |
+| MIX | fully wet (**W100**) |
+| DENS | **centre (0)** |
+| SHPE | centre |
+| PTCH | 0 |
+| FDBK | 0 (fully left) |
+| RAND, PRND | 0 |
+| SYNC | **off** |
+| Mod fx, reverb | off |
+| Arpeggiator / sequencer | off |
+
+### How to read a number
+
+The profiling units have a parameter called **DIAG** at the end of the
+edit menu. Its value is not a setting; it picks **which number to show**.
+
+1. Go to DIAG.
+2. Turn knob B until the DIAG value equals the number you want (e.g. `5`).
+   The display shows the measurement.
+3. The display doesn't update by itself. To refresh, turn one step away
+   and back.
+
+**Before each measurement step, "clear the peaks":** set DIAG to **28**
+(the display shows `RST`), then turn back to the number you want. This
+wipes the old highest/lowest values so you only capture the current step.
+
+Some readings show a small `k`, meaning thousands (`115k` = 115 000).
+Write down exactly what you see.
+
+### The routine
+
+Do steps 1–3 **once only**, on **Beets P4**. Then do steps 4–7 on **every**
+profiling unit (P4, P8, PM8, PM16, PM32, PMX32), filling in one column of
+the results table per unit.
+
+---
+
+**Step 1 — Idle numbers (P4 only)**
+
+Starting position. DENS at centre, so no grains are playing. Wait 10
+seconds, then read and write down:
+
+| DIAG | What it is | Value |
 |---:|---|---|
-| 0 | TIME (knob A) | same |
-| 1 | SIZE (knob B; fully right = delay mode) | same |
-| 2 | MIX (DEL + knob B) | same |
-| 3 DENS, 4 SHPE, 5 PTCH, 6 FDBK, 7 RAND, 8 PRND | menu | same |
-| 9 | SYNC off/on | same |
-| 10 | FRZE off/on | **DIAG** (readout; no freeze) |
+| 2 | total processing time available per sample | |
+| 4 | processor speed (MHz) | |
+| 7 | audio buffer size | |
+| 18 | memory read speed: in order | |
+| 19 | memory read speed: random | |
+| 20 | memory read speed: cached | |
+| 21 | ratio of 19 to 18 | |
+| 27 | crash-protection setting (just for the record) | |
 
-Notes do nothing (SEED is always in Beads' auto mode). Pitch bend = ±2
-octaves on PTCH. There is no MODE parameter (DIGS only).
+---
 
-## Setup (same every time)
+**Step 2 — Does the clock run on its own? (P4 only)**
 
-1. Load the unit into a delfx slot and select it. Mod fx and reverb off
-   (except in the headroom test).
-2. **Audio:** loop one fixed source into AUDIO IN — same file, same level,
-   every run. Don't touch the keyboard unless a step says to.
-3. **Reset parameters** (hold DEL + turn the encoder for the menu):
-   TIME default (¼), SIZE centre, MIX **W100**, DENS **0** (centre),
-   SHPE centre, PTCH 0, FDBK 0, RAND 0, PRND 0, **SYNC off**, FRZE off.
-4. **Reading DIAG (profiling units):** parameter 10, the last in the menu.
-   Turn to a DIAG number to show its value; step away and back to refresh.
-   **DIAG 28 = RST** clears all peaks/min/max.
+Keep the arpeggiator and sequencer **off**. Read DIAG **10** (a tick
+counter). Wait 10 seconds. Read DIAG 10 again.
 
-## The test (profiling units)
+- First reading: ______  Second reading: ______
+- Did it go up? **yes / no**
 
-| Step | Do this | Wait | Read DIAG |
-|---|---|---|---|
-| A | Setup. DENS centre = no grains | 10 s | 2, 4, 7, 8, 9, 18, 19, 20, 21, 22, 27; then 0 → **U0** |
-| B | Arp/sequencer **off**, tempo 120 BPM | 10 s | 10, wait 10 s, 10 again (does it count up with transport stopped?) |
-| C | Play 3 notes, move pitch bend fully up and down | — | 25, 26 (sound should not react to the notes) |
-| D | RST. **SYNC on**, DENS fully left. Arp/sequencer **on**, 120 BPM, internal clock | 30 s | 10–17 |
-| E | As D, **external MIDI clock** 120 BPM: USB, then DIN | 30 s each | 11–15 |
-| F | Clock off, **SYNC off**. RST. **Max load:** DENS fully right, SIZE fully left (longest grains, most overlap), FDBK max, RAND +100, PRND +100 | 30 s | 0, 1, 5, 6, 23, 24 |
-| G | Back to setup values. RST. **Synced delay:** SIZE fully right, DENS ¼ left, FDBK half, **SYNC on**, clock on | 30 s | 0, 1, 5, 6 |
-| H | SYNC off. RST. For 30 s, quickly sweep SIZE in and out of delay mode and DENS end to end | 30 s | 1, 6. Clicks or dropouts? |
+---
 
-Steps A–C only need doing on P4 unless the values change between units.
+**Step 3 — Notes and pitch bend (P4 only)**
 
-### Results
+Play three notes on the keyboard, then move the pitch bend fully up and
+fully down. The sound should **not** react to the notes; that's
+intended. Read:
 
-| Step: DIAG | Meaning | P4 | P8 | PM8 | PM16 | PM32 | PMX32 |
-|---|---|---|---|---|---|---|---|
-| A: 2 | cycles per sample (whole budget) | | | | | | |
-| A: 4 | core MHz | | | | | | |
-| A: 7 / 8 / 9 | frames per buffer / min / max | | | | | | |
-| A: 18 / 19 / 20 | memory read: sequential / random / cached | | | | | | |
-| A: 21 / 22 | random÷sequential / one 4-sample read | | | | | | |
-| A: 27 | trap bits (for the record; guard already in) | | | | | | |
-| A: 0 | U0, idle cycles per sample | | | | | | |
-| B: 10 | ticks with transport stopped: rising? (y/n) | | | | | | |
-| C: 25 / 26 | note-ons / pitch bends received | | | | | | |
-| D: 11 / 12 / 13 | tick ms min / max, spread µs (internal) | | | | | | |
-| D: 14 / 15 | tick interval seen by DSP, samples min / max | | | | | | |
-| D: 16 / 17 | tick position in audio period, % min / max | | | | | | |
-| E: 11 / 12 / 13 | tick ms min / max, spread µs (USB) | | | | | | |
-| E: 11 / 12 / 13 | tick ms min / max, spread µs (DIN) | | | | | | |
-| F: 0 / 1 | cycles per sample avg / peak | | | | | | |
-| F: 5 / 6 | load % avg / peak | | | | | | |
-| F: 23 / 24 | cycles per grain / peak active grains | | | | | | |
-| G: 0 / 1 | synced delay, cycles avg / peak | | | | | | |
-| G: 5 / 6 | synced delay, load % avg / peak | | | | | | |
-| H: 1 / 6 | sweep peak cycles / peak load % | | | | | | |
-| H | clicks or dropouts? (y/n) | | | | | | |
+| DIAG | What it is | Value |
+|---:|---|---|
+| 25 | how many notes the unit received | |
+| 26 | how many pitch-bend messages it received | |
 
-## Listening and headroom test (shipping unit "Beets")
+---
 
-Load a demanding user oscillator and a user revfx next to Beets, then use
-the setup above.
+**Step 4 — Idle cost (every unit)**
 
-| # | Do this | Expected | OK? |
-|---|---|---|---|
-| 1 | DENS centre | wet signal silent | |
-| 2 | DENS left of centre | regular grains, faster further left | |
-| 3 | DENS right of centre | random grains, faster further right | |
-| 4 | SIZE fully right | ~1.5 s crossfade into echo delay | |
-| 5 | SIZE back a little | crossfade back to grains | |
-| 6 | RAND, then PRND, to +100 and −100 | RAND: grain length/shape scatter. PRND: pitch drift and position scatter | |
-| 7 | Pitch bend fully up / down | grains up / down 2 octaves | |
-| 8 | Play notes | no change to the sound | |
-| 9 | FRZE on, then off | buffer holds while grains keep playing; resumes recording | |
-| 10 | SYNC on, arp on 120 BPM, DENS fully left, then towards centre | one grain per 16th, then slower divisions | |
-| 11 | SYNC on, DENS right of centre | grains on some ticks only (probability) | |
-| 12 | SYNC on, stop the clock | no new grains; SYNC off → free-running again | |
-| 13 | SYNC on, SIZE fully right, change tempo | echoes follow the tempo | |
-| 14 | Step F settings, play the oscillator hard for 2 min | no dropouts or glitches | |
-| 15 | Step H sweeps for 1 min | no dropouts or glitches | |
+Back to the starting position (DENS centre). Clear the peaks (DIAG 28).
+Wait 10 seconds. Read **DIAG 0** → write it in row 4 of the results table.
+
+---
+
+**Step 5 — Maximum load (every unit)**
+
+This makes the unit work as hard as it can. From the starting position, set:
+
+- **DENS fully right**
+- **SIZE fully left** (long, overlapping grains)
+- **FDBK fully right**
+- **RAND +100**, **PRND +100**
+
+Clear the peaks (DIAG 28). Let it play for **30 seconds**, listening for
+clicks or dropouts. Then read DIAG **0, 1, 5, 6, 23, 24** → rows 5a–5f.
+
+---
+
+**Step 6 — Tempo-synced delay (every unit)**
+
+Back to the starting position. Then set:
+
+- **SIZE fully right** (wait ~2 seconds for the crossfade into echo mode)
+- **DENS a quarter turn left of centre**
+- **FDBK halfway**
+- **SYNC on**
+- Arpeggiator or sequencer **on** at **120 BPM**
+
+Clear the peaks. Wait 30 seconds. Read DIAG **0, 1, 5, 6** → rows 6a–6d.
+
+While you're here, the clock-timing numbers (only needed on P4): read DIAG
+**11, 12, 13, 14, 15, 16, 17** → rows 6e–6k.
+
+---
+
+**Step 7 — Fast twiddling (every unit)**
+
+Starting position, SYNC off. Clear the peaks. For **30 seconds**, sweep
+SIZE quickly back and forth through fully-right (in and out of echo mode)
+while turning DENS from end to end. Read DIAG **1** and **6** → rows
+7a–7b. Did you hear any clicks or dropouts? → row 7c.
+
+---
+
+**Optional — External MIDI clock (P4 only)**
+
+Repeat step 6 with the NTS-1 following an external MIDI clock at 120 BPM:
+once over USB, once over DIN. Read DIAG **11, 12, 13** each time → rows
+8a–8f.
+
+---
+
+### Results table
+
+One column per unit. Rows marked *P4* only need filling in for P4.
+
+| Row | DIAG | What | P4 | P8 | PM8 | PM16 | PM32 | PMX32 |
+|---|---:|---|---|---|---|---|---|---|
+| 4 | 0 | idle cost | | | | | | |
+| 5a | 0 | max load: average cost | | | | | | |
+| 5b | 1 | max load: peak cost | | | | | | |
+| 5c | 5 | max load: average CPU % | | | | | | |
+| 5d | 6 | max load: peak CPU % | | | | | | |
+| 5e | 23 | cost per grain | | | | | | |
+| 5f | 24 | most grains playing at once | | | | | | |
+| 5g | — | clicks or dropouts? (y/n) | | | | | | |
+| 6a | 0 | synced delay: average cost | | | | | | |
+| 6b | 1 | synced delay: peak cost | | | | | | |
+| 6c | 5 | synced delay: average CPU % | | | | | | |
+| 6d | 6 | synced delay: peak CPU % | | | | | | |
+| 6e | 11 | *P4:* shortest tick gap (ms) | | | | | | |
+| 6f | 12 | *P4:* longest tick gap (ms) | | | | | | |
+| 6g | 13 | *P4:* tick gap spread (µs) | | | | | | |
+| 6h | 14 | *P4:* shortest tick gap (samples) | | | | | | |
+| 6i | 15 | *P4:* longest tick gap (samples) | | | | | | |
+| 6j | 16 | *P4:* earliest tick position (%) | | | | | | |
+| 6k | 17 | *P4:* latest tick position (%) | | | | | | |
+| 7a | 1 | twiddling: peak cost | | | | | | |
+| 7b | 6 | twiddling: peak CPU % | | | | | | |
+| 7c | — | clicks or dropouts? (y/n) | | | | | | |
+| 8a–c | 11/12/13 | *P4, optional:* USB clock gaps | | | | | | |
+| 8d–f | 11/12/13 | *P4, optional:* DIN clock gaps | | | | | | |
+
+---
+
+## Part B — Listening (normal "Beets" unit)
+
+Load **Beets** (not a P unit). Also load a demanding **user oscillator** and
+a **user reverb** and turn them on, so the NTS-1 is busy, the way a real
+patch would be. Set the starting position from Part A, then go through
+the list. Tick each one that behaves as described.
+
+**Grains**
+
+- [ ] 1. **DENS centre** → the wet sound is silent. (That's correct: centre
+  means "no grains".)
+- [ ] 2. **DENS left of centre** → regular, evenly spaced grains; faster the
+  further left you go.
+- [ ] 3. **DENS right of centre** → irregular, random grains; faster the
+  further right you go.
+- [ ] 4. **SIZE** small to large → short blips to long smears. Below about a
+  third of the way, grains play backwards.
+- [ ] 5. **RAND** to +100 and −100 → grain lengths and shapes vary.
+- [ ] 6. **PRND** to +100 → pitch wanders; to −100 → grains jump around in
+  pitch and position.
+- [ ] 7. **Pitch bend** fully up / down → grains move up / down two
+  octaves.
+- [ ] 8. **Play notes** → nothing changes (correct).
+
+**Echo mode and freeze**
+
+- [ ] 9. **SIZE fully right** → about 1.5 seconds of crossfade, then a
+  tape-style echo delay.
+- [ ] 10. **SIZE back a little** → crossfades back to grains.
+- [ ] 11. **FRZE on** → the recording stops updating, but grains keep playing
+  what's held. **FRZE off** → recording resumes.
+
+**Tempo sync** (arpeggiator or sequencer on, 120 BPM)
+
+- [ ] 12. **SYNC on, DENS fully left** → one grain on every 16th note.
+- [ ] 13. Move DENS **towards centre** → grains on every 2nd, 3rd, 4th…
+  16th note.
+- [ ] 14. **DENS right of centre** → grains on *some* 16ths, at random; more
+  of them further right.
+- [ ] 15. **Stop the clock** with SYNC still on → no new grains. (Correct: it
+  waits for the clock.) **SYNC off** → free-running grains return.
+- [ ] 16. **SYNC on + SIZE fully right**, then change the tempo → the echoes
+  follow the tempo.
+
+**Stress**
+
+- [ ] 17. Part A step 5 settings, playing the oscillator hard for **2
+  minutes** → no clicks, dropouts or freezes.
+- [ ] 18. Part A step 7 twiddling for **1 minute** → no clicks, dropouts or
+  freezes.
+
+---
+
+## When you're done
+
+Send back the results table, the step 1–3 numbers, and anything from
+Part B that didn't behave as described (what you did, what you heard).
 
 Notes:
