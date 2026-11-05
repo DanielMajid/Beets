@@ -90,17 +90,28 @@ Every step below begins from this. Set it now:
 ### How to read a number
 
 The profiling units have a parameter called **DIAG** at the end of the
-edit menu. Its value is not a setting; it picks **which number to show**.
+edit menu. Turning it steps through the measurements one at a time. The
+display shows **the DIAG number, a space, then the measured value**:
+
+| Display | Means |
+|---|---|
+| `0 1834` | DIAG 0 = 1834 |
+| `5 17.45` | DIAG 5 = 17.45 |
+| `28 RST` | DIAG 28, the "clear peaks" position |
 
 1. Go to DIAG.
-2. Turn knob B until the DIAG value equals the number you want (e.g. `5`).
-   The display shows the measurement.
+2. Turn knob B until the number at the start of the display is the one
+   you want. Write down the value after the space.
 3. The display doesn't update by itself. To refresh, turn one step away
    and back.
 
-**Before each measurement step, "clear the peaks":** set DIAG to **28**
-(the display shows `RST`), then turn back to the number you want. This
-wipes the old highest/lowest values so you only capture the current step.
+**Before each measurement step, "clear the peaks":** turn DIAG to
+**28** (the display shows `28 RST`), then turn back to the number you
+want. This wipes the old highest/lowest values so you only capture the
+current step.
+
+If the display is too short to show the whole thing, write down what you
+see and tell me; I'll shorten the format.
 
 Some readings show a small `k`, meaning thousands (`115k` = 115 000).
 Write down exactly what you see.

@@ -7,7 +7,9 @@
 uint32_t g_host_fake_cycles = 0xfff00000u;  // starts near wrap on purpose
 static Profiler pr;
 static int fails = 0;
-static void expect(int idx, const char* want) {
+static void expect(int idx, const char* value) {
+  char want[32];
+  snprintf(want, sizeof(want), "%d %s", idx, value);
   const char* got = pr.Format(idx);
   if (strcmp(got, want)) { printf("diag %d: got '%s' want '%s'\n", idx, got, want); ++fails; }
 }

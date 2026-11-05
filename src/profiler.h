@@ -116,6 +116,7 @@ class Profiler {
     sdram_seq_ = sdram_rand_ = sdram_hot_ = sdram_quad_ = 0.0f;
     ClearGrainFit();
     last_render_start_ = 0;
+    prefix_len_ = 0;
   }
 
   void ResetPeaks() {
@@ -268,7 +269,25 @@ class Profiler {
   }
 
   // ---- readout -------------------------------------------------------------
+  // The display shows only this string, so it starts with the DIAG index:
+  // "5 17.45" = DIAG 5 reads 17.45. (':' is not in the display character set.)
   const char* Format(int32_t index) {
+    char* p = text_;
+    if (index >= 10) *p++ = char('0' + index / 10);
+    *p++ = char('0' + index % 10);
+    *p++ = ' ';
+    prefix_len_ = int(p - text_);
+    *p = 0;
+    const char* value = FormatValue(index);
+    if (value != text_) {  // constant strings: append after the prefix
+      while (*value && p < text_ + sizeof(text_) - 1) *p++ = *value++;
+      *p = 0;
+    }
+    return text_;
+  }
+
+ private:
+  const char* FormatValue(int32_t index) {
     switch (index) {
       case DIAG_RENDER_CPS_AVG: return FormatNumber(render_cps_avg_);
       case DIAG_RENDER_CPS_PEAK: return FormatNumber(render_cps_peak_);
@@ -315,6 +334,7 @@ class Profiler {
     }
   }
 
+ public:
   void Select(int32_t index) {
     if (index == DIAG_RESET_PEAKS) reset_request_ = true;
   }
@@ -348,8 +368,9 @@ class Profiler {
 
   // Integers up to 5 digits ("11458"), else 4 significant digits ("12.34",
   // "1.234"), "123k" above 99999. The device display may truncate long strings.
+  // Writes after the "N " prefix that Format() put in text_.
   const char* FormatNumber(float v) {
-    char* p = text_;
+    char* p = text_ + prefix_len_;
     if (v < 0.0f) { *p++ = '-'; v = -v; }
     uint32_t scaled;
     int decimals;
@@ -409,6 +430,7 @@ class Profiler {
 
   volatile bool reset_request_;
   char text_[16];
+  int prefix_len_;
 };
 
 #else  // !BEETS_PROFILER_ACTIVE
