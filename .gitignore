@@ -5,3 +5,4 @@ host/out/
 /beets.nts1mkiiunit
 host/out/
 release/*.nts1mkiiunit
+dist/

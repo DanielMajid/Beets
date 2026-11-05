@@ -16,3 +16,11 @@ the SDK toolchain for a release). None has been loaded on hardware yet.
 
 Each variant has its own unit ID, so they can share the delfx slots. The
 DIAG table is in `../NOTES.md`, the test procedure in `../TESTING.md`.
+
+Stress-test ladder (full unit, normal controls; see `../STRESS_TEST.md`):
+
+| File | Name on device | Contents |
+|---|---|---|
+| `beets-g8.nts1mkiiunit` | Beets G8 | shipping unit, 8 grains |
+| `beets-g16.nts1mkiiunit` | Beets G16 | shipping unit, 16 grains |
+| `beets-g32.nts1mkiiunit` | Beets G32 | shipping unit, 32 grains |
