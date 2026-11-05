@@ -9,7 +9,7 @@ static Profiler pr;
 static int fails = 0;
 static void expect(int idx, const char* value) {
   char want[32];
-  snprintf(want, sizeof(want), "%d %s", idx, value);
+  snprintf(want, sizeof(want), "%02d %s", idx, value);
   const char* got = pr.Format(idx);
   if (strcmp(got, want)) { printf("diag %d: got '%s' want '%s'\n", idx, got, want); ++fails; }
 }
@@ -30,14 +30,14 @@ int main() {
   expect(DIAG_PERIOD_CPS_AVG, "11458");
   expect(DIAG_CORE_MHZ, "550.0");
   expect(DIAG_LOAD_AVG, "17.45");
-  expect(DIAG_FRAMES_PER_BUFFER, "64");
-  expect(DIAG_TICK_COUNT, "32");
+  expect(DIAG_FRAMES_PER_BUFFER, "064");
+  expect(DIAG_TICK_COUNT, "032");
   // ticks every 94 calls = 94*64 samples = 125.33 ms at 48 kHz
   expect(DIAG_TICK_MS_MIN, "125.3");
-  expect(DIAG_TICK_SPREAD_US, "0");
+  expect(DIAG_TICK_SPREAD_US, "000");
   expect(DIAG_TICK_SMP_MIN, "6016");
   expect(DIAG_TICK_SMP_MAX, "6016");
-  expect(DIAG_GRAIN_CYCLES, "0");  // x constant -> slope undefined -> 0
+  expect(DIAG_GRAIN_CYCLES, "000");  // x constant -> slope undefined -> 0
   expect(DIAG_RESET_PEAKS, "RST");
   return fails;
 }

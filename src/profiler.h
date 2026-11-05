@@ -270,10 +270,13 @@ class Profiler {
 
   // ---- readout -------------------------------------------------------------
   // The display shows only this string, so it starts with the DIAG index:
-  // "5 17.45" = DIAG 5 reads 17.45. (':' is not in the display character set.)
+  // "05 17.45" = DIAG 5 reads 17.45. (':' is not in the display character set.)
+  // Fixed width (2-digit index, value of at least 3 characters): on hardware,
+  // values whose string was 4 characters or fewer ("7 64", "23 0") could not
+  // be selected - the NTS-1 fell back to the previous value.
   const char* Format(int32_t index) {
     char* p = text_;
-    if (index >= 10) *p++ = char('0' + index / 10);
+    *p++ = char('0' + (index / 10) % 10);
     *p++ = char('0' + index % 10);
     *p++ = ' ';
     prefix_len_ = int(p - text_);
@@ -389,6 +392,7 @@ class Profiler {
     int n = 0;
     do { digits[n++] = char('0' + scaled % 10); scaled /= 10; } while (scaled);
     while (n <= decimals) digits[n++] = '0';
+    while (n < 3) digits[n++] = '0';  // at least 3 characters: "064", "000"
     for (int i = n - 1; i >= 0; --i) {
       *p++ = digits[i];
       if (i == decimals && decimals) *p++ = '.';

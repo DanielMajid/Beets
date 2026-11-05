@@ -95,8 +95,10 @@ display shows **the DIAG number, a space, then the measured value**:
 
 | Display | Means |
 |---|---|
-| `0 1834` | DIAG 0 = 1834 |
-| `5 17.45` | DIAG 5 = 17.45 |
+| `00 1834` | DIAG 0 = 1834 |
+| `05 17.45` | DIAG 5 = 17.45 |
+| `07 064` | DIAG 7 = 64 (leading zeros are just padding) |
+| `23 000` | DIAG 23 = 0 |
 | `28 RST` | DIAG 28, the "clear peaks" position |
 
 1. Go to DIAG.
@@ -110,8 +112,8 @@ display shows **the DIAG number, a space, then the measured value**:
 want. This wipes the old highest/lowest values so you only capture the
 current step.
 
-If the display is too short to show the whole thing, write down what you
-see and tell me; I'll shorten the format.
+If a number won't stay selected (the display jumps back to a lower one
+when you let go of knob B), write down which ones and tell me.
 
 Some readings show a small `k`, meaning thousands (`115k` = 115 000).
 Write down exactly what you see.
