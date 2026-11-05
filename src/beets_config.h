@@ -38,6 +38,12 @@
 #define BEETS_UNIT_NAME "Beets PM32"
 #elif BEETS_VARIANT == 6
 #define BEETS_UNIT_NAME "Beets PMX32"
+#elif BEETS_VARIANT == 7
+#define BEETS_UNIT_NAME "Beets G8"
+#elif BEETS_VARIANT == 8
+#define BEETS_UNIT_NAME "Beets G16"
+#elif BEETS_VARIANT == 9
+#define BEETS_UNIT_NAME "Beets G32"
 #else
 #error "unknown BEETS_VARIANT"
 #endif

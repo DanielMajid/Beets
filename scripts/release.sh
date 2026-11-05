@@ -10,6 +10,9 @@
 #  beets-pm16.nts1mkiiunit   Beets PM16   profiler, 16 grains, DSP state in SDRAM
 #  beets-pm32.nts1mkiiunit   Beets PM32   profiler, 32 grains, DSP state in SDRAM
 #  beets-pmx32.nts1mkiiunit  Beets PMX32  as PM32 + WasteCPUCycles stress test
+#  beets-g8.nts1mkiiunit     Beets G8     shipping unit with 8 grains (stress-test ladder)
+#  beets-g16.nts1mkiiunit    Beets G16    shipping unit with 16 grains
+#  beets-g32.nts1mkiiunit    Beets G32    shipping unit with 32 grains
 set -e
 cd "$(dirname "$0")/.."
 mkdir -p release
@@ -28,4 +31,7 @@ build beets-pm8.nts1mkiiunit   "$@" BEETS_DEFS="-DBEETS_VARIANT=3 -DBEETS_PROFIL
 build beets-pm16.nts1mkiiunit  "$@" BEETS_DEFS="-DBEETS_VARIANT=4 -DBEETS_PROFILE -DBEETS_STATE_IN_SDRAM -DBEETS_NUM_GRAINS=16"
 build beets-pm32.nts1mkiiunit  "$@" BEETS_DEFS="-DBEETS_VARIANT=5 -DBEETS_PROFILE -DBEETS_STATE_IN_SDRAM -DBEETS_NUM_GRAINS=32"
 build beets-pmx32.nts1mkiiunit "$@" BEETS_DEFS="-DBEETS_VARIANT=6 -DBEETS_PROFILE -DBEETS_STATE_IN_SDRAM -DBEETS_STRESS_TEST -DBEETS_NUM_GRAINS=32"
+build beets-g8.nts1mkiiunit    "$@" BEETS_DEFS="-DBEETS_VARIANT=7 -DBEETS_NUM_GRAINS=8"
+build beets-g16.nts1mkiiunit   "$@" BEETS_DEFS="-DBEETS_VARIANT=8 -DBEETS_NUM_GRAINS=16"
+build beets-g32.nts1mkiiunit   "$@" BEETS_DEFS="-DBEETS_VARIANT=9 -DBEETS_NUM_GRAINS=32"
 ./build.sh "$@" BEETS_DEFS="" >/dev/null  # leave the default build in place
